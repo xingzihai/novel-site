@@ -53,7 +53,21 @@
             <div style="font-size:28px;font-weight:700;color:var(--accent)" id="stat-words">-</div>
             <div style="font-size:13px;color:var(--text-light)">总字数</div>
           </div>
+          <div style="text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
+            <div style="font-size:28px;font-weight:700;color:var(--accent)" id="stat-pv">-</div>
+            <div style="font-size:13px;color:var(--text-light)">今日访问</div>
+          </div>
+          <div style="text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
+            <div style="font-size:28px;font-weight:700;color:var(--accent)" id="stat-uv">-</div>
+            <div style="font-size:13px;color:var(--text-light)">今日访客</div>
+          </div>
+          <div style="text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
+            <div style="font-size:28px;font-weight:700;color:var(--accent)" id="stat-total-pv">-</div>
+            <div style="font-size:13px;color:var(--text-light)">累计访问</div>
+          </div>
         </div>
+        <!-- 热门书籍 -->
+        <div id="hot-books" style="margin-top:16px"></div>
       </div>
 
       <!-- 账号管理 -->
@@ -775,6 +789,26 @@
         document.getElementById('stat-words').textContent = totalWords >= 10000
           ? (totalWords / 10000).toFixed(1) + ' 万'
           : totalWords.toLocaleString();
+      } catch {}
+      // 加载访问统计
+      try {
+        const res = await api('GET', '/api/admin/stats');
+        const data = await res.json();
+        document.getElementById('stat-pv').textContent = (data.today?.pv || 0).toLocaleString();
+        document.getElementById('stat-uv').textContent = (data.today?.uv || 0).toLocaleString();
+        const totalPv = data.totals?.total_pv || 0;
+        document.getElementById('stat-total-pv').textContent = totalPv >= 10000
+          ? (totalPv / 10000).toFixed(1) + ' 万' : totalPv.toLocaleString();
+        // 热门书籍
+        const el = document.getElementById('hot-books');
+        if (data.hotBooks && data.hotBooks.length > 0) {
+          el.innerHTML = '<h4 style="margin:0 0 8px;font-size:14px;color:var(--text-light)">📈 近30天热门书籍</h4>' +
+            '<ul style="list-style:none;padding:0;margin:0">' +
+            data.hotBooks.map((b, i) => `<li style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px"><span>${i+1}. ${esc(b.title)}</span><span style="color:var(--text-light)">${b.total_views} 次</span></li>`).join('') +
+            '</ul>';
+        } else {
+          el.innerHTML = '';
+        }
       } catch {}
     }
 

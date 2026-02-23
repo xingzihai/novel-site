@@ -41,10 +41,31 @@ export async function onRequestGet(context) {
     ORDER BY sort_order ASC LIMIT 1
   `).bind(chapter.book_id, chapter.sort_order).first();
 
-  return Response.json({
+  const response = Response.json({
     chapter,
     content,
     prevChapter: prevChapter || null,
     nextChapter: nextChapter || null
   });
+
+  // 异步记录阅读统计（不阻塞响应）
+  context.waitUntil(trackChapterView(env, chapter));
+
+  return response;
+}
+
+async function trackChapterView(env, chapter) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    // 章节阅读量 +1
+    await env.DB.prepare(
+      "INSERT INTO chapter_stats (chapter_id, views) VALUES (?, 1) ON CONFLICT(chapter_id) DO UPDATE SET views = views + 1"
+    ).bind(chapter.id).run();
+    // 书籍日阅读量 +1
+    await env.DB.prepare(
+      "INSERT INTO book_stats (book_id, date, views) VALUES (?, ?, 1) ON CONFLICT(book_id, date) DO UPDATE SET views = views + 1"
+    ).bind(chapter.book_id, today).run();
+  } catch (e) {
+    console.error('Track chapter view error:', e);
+  }
 }
