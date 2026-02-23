@@ -37,6 +37,25 @@
     <!-- 管理面板（登录后显示） -->
     <div id="admin-panel" style="display:none">
 
+      <!-- 数据概览 -->
+      <div class="admin-section" id="stats-panel">
+        <h3>📊 数据概览</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px" id="stats-grid">
+          <div style="text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
+            <div style="font-size:28px;font-weight:700;color:var(--accent)" id="stat-books">-</div>
+            <div style="font-size:13px;color:var(--text-light)">书籍</div>
+          </div>
+          <div style="text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
+            <div style="font-size:28px;font-weight:700;color:var(--accent)" id="stat-chapters">-</div>
+            <div style="font-size:13px;color:var(--text-light)">章节</div>
+          </div>
+          <div style="text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
+            <div style="font-size:28px;font-weight:700;color:var(--accent)" id="stat-words">-</div>
+            <div style="font-size:13px;color:var(--text-light)">总字数</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 账号管理 -->
       <div class="admin-section">
         <h3>👤 账号管理</h3>
@@ -166,6 +185,11 @@
           <label>选择书籍</label>
           <select id="manage-book" onchange="loadChapters()"><option value="">选择书籍...</option></select>
         </div>
+        <div id="batch-bar" style="display:none;margin-bottom:12px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:12px">
+          <label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)">全选</label>
+          <span style="font-size:13px;color:var(--text-light)" id="selected-count">已选 0 章</span>
+          <button class="btn btn-danger btn-sm" onclick="batchDelete()">批量删除</button>
+        </div>
         <ul class="admin-list" id="chapter-list"></ul>
         <div style="margin-top:8px" id="export-area"></div>
         <div id="manage-msg"></div>
@@ -255,7 +279,7 @@
       document.getElementById('current-user').textContent = username;
       document.getElementById('user-info').textContent = username;
       document.getElementById('user-info').style.display = 'inline';
-      loadBookList(); loadBookSelects(); loadSettings();
+      loadBookList(); loadBookSelects(); loadSettings(); loadStats();
     }
 
     async function doLogout() {
@@ -617,7 +641,7 @@
       const bookId=document.getElementById('manage-book').value;
       const el=document.getElementById('chapter-list');
       const exportArea=document.getElementById('export-area');
-      if (!bookId) { el.innerHTML=''; exportArea.innerHTML=''; _chaptersCache=[]; return; }
+      if (!bookId) { el.innerHTML=''; exportArea.innerHTML=''; _chaptersCache=[]; document.getElementById('batch-bar').style.display='none'; return; }
       try {
         const res=await fetch(`/api/books/${bookId}`);
         const data=await res.json();
@@ -629,9 +653,12 @@
         }
         el.innerHTML=chapters.map((c,i)=>`
           <li data-id="${c.id}" data-idx="${i}">
-            <div class="item-info">
-              <div class="item-title">${esc(c.title)}</div>
-              <div class="item-meta">第${c.sort_order}章 · ${c.word_count} 字</div>
+            <div style="display:flex;align-items:center;gap:8px;flex:1">
+              <input type="checkbox" class="ch-select" data-id="${c.id}" onchange="updateSelectedCount()">
+              <div class="item-info">
+                <div class="item-title">${esc(c.title)}</div>
+                <div class="item-meta">第${c.sort_order}章 · ${c.word_count} 字</div>
+              </div>
             </div>
             <div class="item-actions">
               ${i>0?`<button class="btn btn-sm btn-move-up">↑</button>`:''}
@@ -642,6 +669,9 @@
             </div>
           </li>
         `).join('');
+        document.getElementById('batch-bar').style.display='flex';
+        document.getElementById('select-all').checked=false;
+        updateSelectedCount();
         exportArea.innerHTML=`<a href="#" id="export-book-link" style="font-size:13px;color:var(--text-light);text-decoration:none;border-bottom:1px dashed var(--text-light)">导出全书 TXT</a>`;
         document.getElementById('export-book-link').addEventListener('click',function(e){e.preventDefault();exportBook(bookId);});
       } catch(e) { el.innerHTML=`<li class="msg msg-error">${esc(e.message)}</li>`; }
@@ -717,6 +747,52 @@
     document.getElementById('chapter-content').addEventListener('input',function(){
       document.getElementById('word-count').textContent=this.value.trim().length;
     });
+
+    // ===== 数据概览 =====
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/books');
+        const data = await res.json();
+        const books = data.books || [];
+        const totalChapters = books.reduce((s, b) => s + (b.chapter_count || 0), 0);
+        const totalWords = books.reduce((s, b) => s + (b.total_words || 0), 0);
+        document.getElementById('stat-books').textContent = books.length;
+        document.getElementById('stat-chapters').textContent = totalChapters;
+        document.getElementById('stat-words').textContent = totalWords >= 10000
+          ? (totalWords / 10000).toFixed(1) + ' 万'
+          : totalWords.toLocaleString();
+      } catch {}
+    }
+
+    // ===== 批量操作 =====
+    function toggleSelectAll(checked) {
+      document.querySelectorAll('.ch-select').forEach(cb => cb.checked = checked);
+      updateSelectedCount();
+    }
+    function updateSelectedCount() {
+      const count = document.querySelectorAll('.ch-select:checked').length;
+      const el = document.getElementById('selected-count');
+      if (el) el.textContent = `已选 ${count} 章`;
+    }
+    async function batchDelete() {
+      const ids = [...document.querySelectorAll('.ch-select:checked')].map(cb => Number(cb.dataset.id));
+      if (ids.length === 0) return showMsg('manage-msg', '请先勾选要删除的章节', 'error');
+      if (!confirm(`确定删除选中的 ${ids.length} 个章节？此操作不可恢复！`)) return;
+      let deleted = 0, errors = [];
+      for (const id of ids) {
+        try {
+          const res = await api('DELETE', `/api/admin/chapters/${id}`);
+          if (!res.ok) { const d = await res.json(); errors.push(d.error); }
+          else deleted++;
+        } catch (e) { errors.push(e.message); }
+      }
+      if (errors.length > 0) {
+        showMsg('manage-msg', `删除 ${deleted} 章，${errors.length} 章失败`, 'error');
+      } else {
+        showMsg('manage-msg', `成功删除 ${deleted} 章`, 'success');
+      }
+      loadChapters(); loadBookList();
+    }
 
     // ===== 数据备份与恢复 =====
     async function exportBackup() {

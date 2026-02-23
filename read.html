@@ -24,6 +24,7 @@
   <div class="reader-bottom-bar" id="bottom-bar">
     <button class="bar-btn" id="bar-prev" title="上一章"><span class="bar-icon">◀</span>上一章</button>
     <button class="bar-btn" id="bar-toc" title="目录"><span class="bar-icon">☰</span>目录</button>
+    <button class="bar-btn" id="bar-bookmark" title="书签"><span class="bar-icon" id="bookmark-icon">☆</span>书签</button>
     <button class="bar-btn" id="bar-settings" title="设置"><span class="bar-icon">⚙</span>设置</button>
     <button class="bar-btn" id="bar-next" title="下一章"><span class="bar-icon">▶</span>下一章</button>
   </div>
@@ -348,6 +349,9 @@
         // 保存阅读进度
         saveScrollPosition();
 
+        // 更新书签图标
+        updateBookmarkIcon();
+
         // 恢复滚动位置
         restoreScrollPosition(c.book_id, c.id);
 
@@ -410,6 +414,43 @@
       a.click();
       URL.revokeObjectURL(url);
     }
+
+    // ===== 书签功能 =====
+    function getBookmarks(bookId) {
+      try { return JSON.parse(localStorage.getItem(`bookmarks_${bookId}`)) || []; }
+      catch { return []; }
+    }
+    function saveBookmarks(bookId, bookmarks) {
+      localStorage.setItem(`bookmarks_${bookId}`, JSON.stringify(bookmarks));
+    }
+    function isBookmarked() {
+      if (!window._chapterMeta) return false;
+      const m = window._chapterMeta;
+      const bms = getBookmarks(m.bookId);
+      return bms.some(b => b.chapterId === m.chapterId);
+    }
+    function updateBookmarkIcon() {
+      document.getElementById('bookmark-icon').textContent = isBookmarked() ? '★' : '☆';
+    }
+    function toggleBookmark() {
+      if (!window._chapterMeta) return;
+      const m = window._chapterMeta;
+      let bms = getBookmarks(m.bookId);
+      const idx = bms.findIndex(b => b.chapterId === m.chapterId);
+      if (idx >= 0) {
+        bms.splice(idx, 1);
+      } else {
+        const h = document.documentElement.scrollHeight - window.innerHeight;
+        const pct = h > 0 ? (window.scrollY / h) : 0;
+        bms.push({
+          chapterId: m.chapterId, chapterTitle: m.chapterTitle,
+          scrollPct: pct, time: Date.now()
+        });
+      }
+      saveBookmarks(m.bookId, bms);
+      updateBookmarkIcon();
+    }
+    document.getElementById('bar-bookmark').addEventListener('click', toggleBookmark);
   </script>
 </body>
 </html>

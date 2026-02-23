@@ -41,6 +41,7 @@
     }
 
     const bookId = new URLSearchParams(location.search).get('id');
+    let allChapters = [];
     if (!bookId || !/^\d+$/.test(bookId)) {
       document.getElementById('content').innerHTML = '<div class="msg msg-error">无效的书籍ID</div>';
     } else {
@@ -61,6 +62,7 @@
         const data = await res.json();
         const b = data.book;
         const chapters = data.chapters || [];
+        allChapters = chapters;
 
         document.title = esc(b.title) + ' - 我的书架';
         document.querySelector('meta[name="description"]').content = b.description || b.title;
@@ -73,6 +75,9 @@
             ${b.description ? `<div class="desc">${esc(b.description)}</div>` : ''}
           </div>
         `;
+        if (chapters.length > 0) {
+          html += `<div class="search-bar" style="margin-top:16px;margin-bottom:0"><input type="text" id="chapter-search" placeholder="搜索章节标题..." autocomplete="off"><button onclick="filterChapters()">搜索</button></div>`;
+        }
         if (chapters.length === 0) {
           html += '<div class="empty"><p>暂无章节</p></div>';
         } else {
@@ -86,6 +91,21 @@
           `).join('') + '</ul>';
           html += `<div style="margin-top:20px;text-align:center"><a href="#" id="export-link" style="font-size:13px;color:var(--text-light);text-decoration:none;border-bottom:1px dashed var(--text-light);padding-bottom:1px">导出全书 TXT</a></div>`;
         }
+
+        // 书签列表
+        const bookmarks = getBookmarks(bookId);
+        if (bookmarks.length > 0) {
+          html += `<div style="margin-top:24px"><h3 style="font-size:16px;margin-bottom:12px;color:var(--text)">🔖 我的书签（${bookmarks.length}）</h3>`;
+          html += '<ul class="chapter-list">' + bookmarks.sort((a,b) => b.time - a.time).map(bm => `
+            <li>
+              <a href="/read.html?id=${bm.chapterId}">
+                <span class="chapter-title">${esc(bm.chapterTitle)}</span>
+                <span class="chapter-meta">${formatTimeAgo(bm.time)}</span>
+              </a>
+            </li>
+          `).join('') + '</ul></div>';
+        }
+
         el.innerHTML = html;
 
         // 安全绑定导出事件（避免onclick中拼接字符串）
@@ -98,6 +118,52 @@
       }
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+    function getBookmarks(bookId) {
+      try { return JSON.parse(localStorage.getItem(`bookmarks_${bookId}`)) || []; }
+      catch { return []; }
+    }
+    function formatTimeAgo(ts) {
+      const diff = Date.now() - ts;
+      const min = Math.floor(diff / 60000);
+      if (min < 1) return '刚刚';
+      if (min < 60) return min + '分钟前';
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return hr + '小时前';
+      return Math.floor(hr / 24) + '天前';
+    }
+
+    function filterChapters() {
+      const input = document.getElementById('chapter-search');
+      if (!input) return;
+      const q = input.value.trim().toLowerCase();
+      const listEl = document.querySelector('.chapter-list');
+      if (!listEl) return;
+      const filtered = q ? allChapters.filter(c => c.title.toLowerCase().includes(q)) : allChapters;
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<li style="padding:16px;text-align:center;color:var(--text-light)">没有匹配的章节</li>';
+      } else {
+        listEl.innerHTML = filtered.map(c => `
+          <li><a href="/read.html?id=${c.id}">
+            <span class="chapter-title">${highlightMatch(esc(c.title), q)}</span>
+            <span class="chapter-meta">${c.word_count} 字</span>
+          </a></li>
+        `).join('');
+      }
+    }
+    function highlightMatch(text, q) {
+      if (!q) return text;
+      const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi');
+      return text.replace(re, '<mark>$1</mark>');
+    }
+    // 绑定搜索事件（延迟绑定，等DOM渲染完）
+    setTimeout(() => {
+      const searchInput = document.getElementById('chapter-search');
+      if (searchInput) {
+        searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') filterChapters(); });
+        searchInput.addEventListener('input', (e) => { if (!e.target.value.trim()) filterChapters(); });
+      }
+    }, 500);
 
     async function exportBook(bookId, title, author) {
       try {
