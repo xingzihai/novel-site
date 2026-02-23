@@ -171,23 +171,46 @@
         <div id="manage-msg"></div>
       </div>
 
+      <!-- 数据备份与恢复 -->
+      <div class="admin-section">
+        <h3>💾 数据备份与恢复</h3>
+        <p style="font-size:13px;color:var(--text-light);margin-bottom:12px">导出全站数据（书籍+章节正文+设置）为 JSON 文件，或从备份文件恢复。</p>
+        <button class="btn" id="backup-btn" onclick="exportBackup()">导出备份</button>
+        <label class="btn" style="cursor:pointer;background:var(--accent-dark)">
+          导入恢复
+          <input type="file" id="restore-file" accept=".json" style="display:none">
+        </label>
+        <div id="backup-progress" style="display:none;margin-top:12px">
+          <div style="background:var(--border);border-radius:10px;overflow:hidden;height:20px">
+            <div id="backup-bar" style="height:100%;background:var(--accent);border-radius:10px;transition:width 0.3s;width:0%"></div>
+          </div>
+          <div id="backup-status" style="font-size:13px;color:var(--text-light);margin-top:4px"></div>
+        </div>
+        <div id="backup-msg"></div>
+      </div>
+
     </div><!-- /admin-panel -->
   </div>
 
   <script>
     // ===== 主题 =====
+    const THEMES = ['light','dark','green','sepia','blue'];
+    const THEME_ICONS = {'light':'🌙','dark':'☀️','green':'🍃','sepia':'📜','blue':'💧'};
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateThemeBtn();
     function toggleTheme() {
-      const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', t);
-      localStorage.setItem('theme', t);
+      const current = document.documentElement.getAttribute('data-theme');
+      const idx = THEMES.indexOf(current);
+      const next = THEMES[(idx + 1) % THEMES.length];
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
       updateThemeBtn();
     }
     function updateThemeBtn() {
-      document.querySelector('.theme-toggle').textContent =
-        document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+      const btn = document.querySelector('.theme-toggle');
+      const t = document.documentElement.getAttribute('data-theme');
+      btn.textContent = THEME_ICONS[t] || '🌙';
     }
 
     // ===== 认证 =====
@@ -383,12 +406,26 @@
       document.getElementById('import-total').textContent=parsedChapters.length;
       document.getElementById('import-words').textContent=totalWords.toLocaleString();
       el.innerHTML=parsedChapters.map((c,i)=>`
-        <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-          <input type="checkbox" ${c.checked?'checked':''} onchange="parsedChapters[${i}].checked=this.checked">
-          <span style="flex:1">${esc(c.title)}</span>
-          <span style="font-size:12px;color:var(--text-light)">${c.content.length} 字</span>
-        </label>
+        <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" ${c.checked?'checked':''} data-idx="${i}" class="import-check">
+            <input type="text" value="${esc(c.title)}" data-idx="${i}" class="import-title-edit" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:14px;background:var(--bg);color:var(--text)">
+            <span style="font-size:12px;color:var(--text-light);white-space:nowrap">${c.content.length} 字</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-light);margin-top:4px;padding-left:28px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.content.slice(0,120))}</div>
+        </div>
       `).join('');
+      // 事件委托
+      el.addEventListener('change', (e) => {
+        if (e.target.classList.contains('import-check')) {
+          parsedChapters[e.target.dataset.idx].checked = e.target.checked;
+        }
+      });
+      el.addEventListener('input', (e) => {
+        if (e.target.classList.contains('import-title-edit')) {
+          parsedChapters[e.target.dataset.idx].title = e.target.value;
+        }
+      });
       document.getElementById('import-preview').style.display='block';
     }
     function cancelImport() {
@@ -679,6 +716,93 @@
 
     document.getElementById('chapter-content').addEventListener('input',function(){
       document.getElementById('word-count').textContent=this.value.trim().length;
+    });
+
+    // ===== 数据备份与恢复 =====
+    async function exportBackup() {
+      const btn=document.getElementById('backup-btn');
+      const bar=document.getElementById('backup-bar');
+      const status=document.getElementById('backup-status');
+      const progress=document.getElementById('backup-progress');
+      btn.disabled=true; btn.textContent='导出中...';
+      progress.style.display='block';
+      try {
+        // 获取所有书籍
+        const booksRes=await api('GET','/api/books');
+        const booksData=await booksRes.json();
+        const books=booksData.books||[];
+        // 获取设置
+        const settingsRes=await fetch('/api/settings');
+        const settingsData=await settingsRes.json();
+        const backup={version:1,exportedAt:new Date().toISOString(),settings:settingsData.settings||{},books:[]};
+        let done=0;
+        for (const book of books) {
+          const bookRes=await fetch(`/api/books/${book.id}`);
+          const bookData=await bookRes.json();
+          const chapters=bookData.chapters||[];
+          const fullChapters=[];
+          for (const ch of chapters) {
+            const chRes=await fetch(`/api/chapters/${ch.id}`);
+            const chData=await chRes.json();
+            fullChapters.push({title:ch.title,sort_order:ch.sort_order,word_count:ch.word_count,content:chData.content||''});
+          }
+          backup.books.push({title:book.title,author:book.author||'',description:book.description||'',chapters:fullChapters});
+          done++;
+          const pct=Math.round(done/books.length*100);
+          bar.style.width=pct+'%';
+          status.textContent=`${done}/${books.length} 本书`;
+        }
+        const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url;
+        a.download=`novel-site-backup-${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showMsg('backup-msg',`备份成功：${books.length} 本书`,'success');
+      } catch(e) { showMsg('backup-msg','备份失败：'+e.message,'error'); }
+      btn.disabled=false; btn.textContent='导出备份';
+      setTimeout(()=>{progress.style.display='none';},2000);
+    }
+
+    document.getElementById('restore-file').addEventListener('change',async(e)=>{
+      const file=e.target.files[0];
+      if (!file) return;
+      if (!confirm('恢复备份会添加数据（不会删除现有数据）。确定继续？')) { e.target.value=''; return; }
+      const bar=document.getElementById('backup-bar');
+      const status=document.getElementById('backup-status');
+      const progress=document.getElementById('backup-progress');
+      progress.style.display='block';
+      try {
+        const text=await file.text();
+        const backup=JSON.parse(text);
+        if (!backup.version || !backup.books) throw new Error('无效的备份文件');
+        const books=backup.books;
+        let done=0,errors=[];
+        for (const book of books) {
+          try {
+            // 创建书籍
+            const res=await api('POST','/api/admin/books',{title:book.title,author:book.author,description:book.description});
+            const d=await res.json();
+            if (!res.ok) throw new Error(d.error);
+            const bookId=d.book.id;
+            // 导入章节
+            for (const ch of (book.chapters||[])) {
+              await api('POST','/api/admin/chapters',{book_id:bookId,title:ch.title,content:ch.content});
+            }
+          } catch(err) { errors.push(book.title+': '+err.message); }
+          done++;
+          const pct=Math.round(done/books.length*100);
+          bar.style.width=pct+'%';
+          status.textContent=`${done}/${books.length} 本书`;
+        }
+        if (errors.length>0) {
+          showMsg('backup-msg',`恢复完成，${errors.length} 本失败：${errors.slice(0,3).join('；')}`,'error');
+        } else { showMsg('backup-msg',`成功恢复 ${books.length} 本书`,'success'); }
+        loadBookList(); loadBookSelects();
+      } catch(err) { showMsg('backup-msg','恢复失败：'+err.message,'error'); }
+      e.target.value='';
+      setTimeout(()=>{progress.style.display='none';},2000);
     });
   </script>
 </body>

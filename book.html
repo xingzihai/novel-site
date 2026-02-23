@@ -21,19 +21,23 @@
     <div id="content" class="loading">加载中...</div>
   </div>
   <script>
+    const THEMES = ['light','dark','green','sepia','blue'];
+    const THEME_ICONS = {'light':'🌙','dark':'☀️','green':'🍃','sepia':'📜','blue':'💧'};
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateThemeBtn();
     function toggleTheme() {
       const current = document.documentElement.getAttribute('data-theme');
-      const next = current === 'dark' ? 'light' : 'dark';
+      const idx = THEMES.indexOf(current);
+      const next = THEMES[(idx + 1) % THEMES.length];
       document.documentElement.setAttribute('data-theme', next);
       localStorage.setItem('theme', next);
       updateThemeBtn();
     }
     function updateThemeBtn() {
       const btn = document.querySelector('.theme-toggle');
-      btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+      const t = document.documentElement.getAttribute('data-theme');
+      btn.textContent = THEME_ICONS[t] || '🌙';
     }
 
     const bookId = new URLSearchParams(location.search).get('id');

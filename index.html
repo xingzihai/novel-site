@@ -19,24 +19,115 @@
     </nav>
   </div>
   <div class="container">
+    <div id="continue-reading"></div>
+    <div class="search-bar">
+      <input type="text" id="search-input" placeholder="搜索书名或作者..." autocomplete="off">
+      <button onclick="doSearch()">搜索</button>
+    </div>
+    <div id="search-results" class="search-results" style="display:none"></div>
     <div id="content" class="loading">加载中...</div>
   </div>
   <script>
     // 主题
+    const THEMES = ['light','dark','green','sepia','blue'];
+    const THEME_ICONS = {'light':'🌙','dark':'☀️','green':'🍃','sepia':'📜','blue':'💧'};
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateThemeBtn();
     function toggleTheme() {
       const current = document.documentElement.getAttribute('data-theme');
-      const next = current === 'dark' ? 'light' : 'dark';
+      const idx = THEMES.indexOf(current);
+      const next = THEMES[(idx + 1) % THEMES.length];
       document.documentElement.setAttribute('data-theme', next);
       localStorage.setItem('theme', next);
       updateThemeBtn();
     }
     function updateThemeBtn() {
       const btn = document.querySelector('.theme-toggle');
-      btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+      const t = document.documentElement.getAttribute('data-theme');
+      btn.textContent = THEME_ICONS[t] || '🌙';
     }
+
+    // 继续阅读
+    function renderContinueReading() {
+      const container = document.getElementById('continue-reading');
+      const entries = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key.startsWith('reading_')) continue;
+        try {
+          const data = JSON.parse(localStorage.getItem(key));
+          if (data && data.chapterId && data.time) entries.push(data);
+        } catch {}
+      }
+      if (entries.length === 0) { container.innerHTML = ''; return; }
+      entries.sort((a, b) => b.time - a.time);
+      const latest = entries[0];
+      const timeAgo = formatTimeAgo(latest.time);
+      container.innerHTML = `
+        <a class="continue-reading" href="/read.html?id=${latest.chapterId}">
+          <div class="continue-info">
+            <div class="continue-label">继续阅读</div>
+            <div class="continue-title">${esc(latest.bookTitle || '未知书籍')}</div>
+            <div class="continue-chapter">${esc(latest.chapterTitle || '')} · ${timeAgo}</div>
+          </div>
+          <div class="continue-arrow">→</div>
+        </a>
+      `;
+    }
+    function formatTimeAgo(ts) {
+      const diff = Date.now() - ts;
+      const min = Math.floor(diff / 60000);
+      if (min < 1) return '刚刚';
+      if (min < 60) return min + '分钟前';
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return hr + '小时前';
+      const day = Math.floor(hr / 24);
+      return day + '天前';
+    }
+
+    // 搜索
+    let allBooks = [];
+    function doSearch() {
+      const q = document.getElementById('search-input').value.trim().toLowerCase();
+      const resultsEl = document.getElementById('search-results');
+      const contentEl = document.getElementById('content');
+      if (!q) {
+        resultsEl.style.display = 'none';
+        contentEl.style.display = '';
+        return;
+      }
+      const matched = allBooks.filter(b =>
+        (b.title || '').toLowerCase().includes(q) ||
+        (b.author || '').toLowerCase().includes(q)
+      );
+      if (matched.length === 0) {
+        resultsEl.innerHTML = '<div style="padding:16px;color:var(--text-light);text-align:center">没有找到匹配的书籍</div>';
+      } else {
+        resultsEl.innerHTML = matched.map(b => `
+          <a class="result-item" href="/book.html?id=${b.id}">
+            <div class="result-title">${highlightMatch(esc(b.title), q)}</div>
+            <div class="result-book">${b.author ? highlightMatch(esc(b.author), q) + ' · ' : ''}${b.chapter_count}章 · ${formatWords(b.total_words)}</div>
+          </a>
+        `).join('');
+      }
+      resultsEl.style.display = '';
+      contentEl.style.display = 'none';
+    }
+    function highlightMatch(text, q) {
+      if (!q) return text;
+      const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi');
+      return text.replace(re, '<mark>$1</mark>');
+    }
+    document.getElementById('search-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doSearch();
+    });
+    document.getElementById('search-input').addEventListener('input', (e) => {
+      if (!e.target.value.trim()) {
+        document.getElementById('search-results').style.display = 'none';
+        document.getElementById('content').style.display = '';
+      }
+    });
 
     async function loadBooks() {
       const el = document.getElementById('content');
@@ -44,12 +135,14 @@
         const res = await fetch('/api/books');
         if (!res.ok) throw new Error('加载失败');
         const data = await res.json();
-        if (!data.books || data.books.length === 0) {
+        allBooks = data.books || [];
+        renderContinueReading();
+        if (allBooks.length === 0) {
           el.innerHTML = '<div class="empty"><p>📖 书架空空如也</p><p>去<a href="/admin.html">管理后台</a>添加第一本书吧</p></div>';
           return;
         }
         el.className = 'book-grid';
-        el.innerHTML = data.books.map(b => `
+        el.innerHTML = allBooks.map(b => `
           <a class="book-card" href="/book.html?id=${b.id}">
             <h3>${esc(b.title)}</h3>
             <div class="meta">

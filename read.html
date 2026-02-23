@@ -13,78 +13,267 @@
     <h1><a href="/">📚 我的书架</a></h1>
     <nav>
       <a href="#" id="back-link">返回目录</a>
-      <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌙</button>
     </nav>
   </div>
-  <div class="reader">
+  <div class="reader" id="reader-area">
     <div class="breadcrumb" id="breadcrumb"></div>
-    <div class="reader-toolbar">
-      <span style="font-size:13px;color:var(--text-light)">字号</span>
-      <button class="font-btn" onclick="changeFontSize(-1)">A-</button>
-      <span id="font-label" style="font-size:13px;min-width:40px;text-align:center">17px</span>
-      <button class="font-btn" onclick="changeFontSize(1)">A+</button>
-    </div>
     <div id="content" class="loading">加载中...</div>
   </div>
-  <button class="back-to-top" id="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+  <!-- 底部工具栏 -->
+  <div class="reader-bottom-bar" id="bottom-bar">
+    <button class="bar-btn" id="bar-prev" title="上一章"><span class="bar-icon">◀</span>上一章</button>
+    <button class="bar-btn" id="bar-toc" title="目录"><span class="bar-icon">☰</span>目录</button>
+    <button class="bar-btn" id="bar-settings" title="设置"><span class="bar-icon">⚙</span>设置</button>
+    <button class="bar-btn" id="bar-next" title="下一章"><span class="bar-icon">▶</span>下一章</button>
+  </div>
+
+  <!-- 章节目录浮层 -->
+  <div class="toc-overlay" id="toc-overlay">
+    <div class="toc-panel">
+      <h3 id="toc-title">目录</h3>
+      <ul class="toc-list" id="toc-list"></ul>
+    </div>
+  </div>
+
+  <!-- 设置面板 -->
+  <div class="settings-overlay" id="settings-overlay">
+    <div class="settings-panel">
+      <h3>阅读设置<button class="close-btn" id="close-settings">✕</button></h3>
+      <div class="setting-row">
+        <span class="setting-label">主题</span>
+        <div class="theme-options" id="theme-options">
+          <div class="theme-dot" data-theme="light" title="默认"></div>
+          <div class="theme-dot" data-theme="dark" title="夜间"></div>
+          <div class="theme-dot" data-theme="green" title="护眼"></div>
+          <div class="theme-dot" data-theme="sepia" title="羊皮纸"></div>
+          <div class="theme-dot" data-theme="blue" title="淡蓝"></div>
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">字体</span>
+        <div class="font-options" id="font-options">
+          <div class="font-option" data-font="'Georgia','Noto Serif SC','Source Han Serif CN',serif" style="font-family:Georgia,serif">宋体/衬线</div>
+          <div class="font-option" data-font="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" style="font-family:sans-serif">黑体/无衬线</div>
+          <div class="font-option" data-font="'KaiTi','STKaiti','AR PL UKai CN',serif" style="font-family:KaiTi,STKaiti,serif">楷体</div>
+          <div class="font-option" data-font="'FangSong','STFangsong',serif" style="font-family:FangSong,STFangsong,serif">仿宋</div>
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">字号</span>
+        <div class="slider-row">
+          <span style="font-size:12px">A</span>
+          <input type="range" id="font-size-slider" min="14" max="28" step="1">
+          <span style="font-size:20px">A</span>
+          <span class="slider-val" id="font-size-val">17px</span>
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">行距</span>
+        <div class="slider-row">
+          <span style="font-size:12px">紧</span>
+          <input type="range" id="line-height-slider" min="1.5" max="3" step="0.1">
+          <span style="font-size:12px">松</span>
+          <span class="slider-val" id="line-height-val">2.0</span>
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">页面宽度</span>
+        <div class="slider-row">
+          <span style="font-size:12px">窄</span>
+          <input type="range" id="width-slider" min="500" max="960" step="20">
+          <span style="font-size:12px">宽</span>
+          <span class="slider-val" id="width-val">720px</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="back-to-top has-bar" id="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 
   <script>
-    // 主题初始化
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    updateThemeBtn();
+    // ===== 阅读设置初始化 =====
+    const THEMES = ['light','dark','green','sepia','blue'];
+    const FONTS = [
+      "'Georgia','Noto Serif SC','Source Han Serif CN',serif",
+      "'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif",
+      "'KaiTi','STKaiti','AR PL UKai CN',serif",
+      "'FangSong','STFangsong',serif"
+    ];
 
-    // 字号初始化
-    let fontSize = parseInt(localStorage.getItem('font-size')) || 17;
-    applyFontSize();
-
-    function toggleTheme() {
-      const current = document.documentElement.getAttribute('data-theme');
-      const next = current === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('theme', next);
-      updateThemeBtn();
-    }
-    function updateThemeBtn() {
-      const btn = document.querySelector('.theme-toggle');
-      btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
-    }
-    function changeFontSize(delta) {
-      fontSize = Math.max(14, Math.min(24, fontSize + delta));
-      localStorage.setItem('font-size', fontSize);
-      applyFontSize();
-    }
-    function applyFontSize() {
-      document.documentElement.style.setProperty('--font-size', fontSize + 'px');
-      const label = document.getElementById('font-label');
-      if (label) label.textContent = fontSize + 'px';
+    function loadSettings() {
+      return {
+        theme: localStorage.getItem('theme') || 'light',
+        fontSize: parseInt(localStorage.getItem('font-size')) || 17,
+        lineHeight: parseFloat(localStorage.getItem('line-height')) || 2,
+        fontFamily: localStorage.getItem('font-family') || FONTS[0],
+        readingWidth: parseInt(localStorage.getItem('reading-width')) || 720
+      };
     }
 
-    // 进度条
+    let settings = loadSettings();
+    applyAllSettings();
+
+    function applyAllSettings() {
+      const root = document.documentElement;
+      root.setAttribute('data-theme', settings.theme);
+      root.style.setProperty('--font-size', settings.fontSize + 'px');
+      root.style.setProperty('--line-height', settings.lineHeight);
+      root.style.setProperty('--letter-spacing', '0.02em');
+      root.style.setProperty('--font-family', settings.fontFamily);
+      root.style.setProperty('--reading-width', settings.readingWidth + 'px');
+    }
+
+    function saveSetting(key, val) {
+      localStorage.setItem(key, val);
+    }
+
+    // ===== 设置面板交互 =====
+    const settingsOverlay = document.getElementById('settings-overlay');
+    const tocOverlay = document.getElementById('toc-overlay');
+
+    // 主题选择
+    document.getElementById('theme-options').addEventListener('click', (e) => {
+      const dot = e.target.closest('.theme-dot');
+      if (!dot) return;
+      settings.theme = dot.dataset.theme;
+      saveSetting('theme', settings.theme);
+      applyAllSettings();
+      updateSettingsUI();
+    });
+
+    // 字体选择
+    document.getElementById('font-options').addEventListener('click', (e) => {
+      const opt = e.target.closest('.font-option');
+      if (!opt) return;
+      settings.fontFamily = opt.dataset.font;
+      saveSetting('font-family', settings.fontFamily);
+      applyAllSettings();
+      updateSettingsUI();
+    });
+
+    // 字号滑块
+    document.getElementById('font-size-slider').addEventListener('input', (e) => {
+      settings.fontSize = parseInt(e.target.value);
+      saveSetting('font-size', settings.fontSize);
+      document.getElementById('font-size-val').textContent = settings.fontSize + 'px';
+      applyAllSettings();
+    });
+
+    // 行距滑块
+    document.getElementById('line-height-slider').addEventListener('input', (e) => {
+      settings.lineHeight = parseFloat(e.target.value);
+      saveSetting('line-height', settings.lineHeight);
+      document.getElementById('line-height-val').textContent = settings.lineHeight.toFixed(1);
+      applyAllSettings();
+    });
+
+    // 页面宽度滑块
+    document.getElementById('width-slider').addEventListener('input', (e) => {
+      settings.readingWidth = parseInt(e.target.value);
+      saveSetting('reading-width', settings.readingWidth);
+      document.getElementById('width-val').textContent = settings.readingWidth + 'px';
+      applyAllSettings();
+    });
+
+    function updateSettingsUI() {
+      document.querySelectorAll('.theme-dot').forEach(d => {
+        d.classList.toggle('active', d.dataset.theme === settings.theme);
+      });
+      document.querySelectorAll('.font-option').forEach(o => {
+        o.classList.toggle('active', o.dataset.font === settings.fontFamily);
+      });
+      document.getElementById('font-size-slider').value = settings.fontSize;
+      document.getElementById('font-size-val').textContent = settings.fontSize + 'px';
+      document.getElementById('line-height-slider').value = settings.lineHeight;
+      document.getElementById('line-height-val').textContent = settings.lineHeight.toFixed(1);
+      document.getElementById('width-slider').value = settings.readingWidth;
+      document.getElementById('width-val').textContent = settings.readingWidth + 'px';
+    }
+
+    // 打开/关闭设置
+    document.getElementById('bar-settings').addEventListener('click', () => {
+      updateSettingsUI();
+      settingsOverlay.classList.add('active');
+    });
+    document.getElementById('close-settings').addEventListener('click', () => {
+      settingsOverlay.classList.remove('active');
+    });
+    settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === settingsOverlay) settingsOverlay.classList.remove('active');
+    });
+
+    // 打开/关闭目录
+    document.getElementById('bar-toc').addEventListener('click', () => {
+      tocOverlay.classList.add('active');
+      // 滚动到当前章节
+      const cur = document.querySelector('.toc-list a.current');
+      if (cur) cur.scrollIntoView({ block: 'center' });
+    });
+    tocOverlay.addEventListener('click', (e) => {
+      if (e.target === tocOverlay) tocOverlay.classList.remove('active');
+    });
+
+    // ===== 底部工具栏显示/隐藏 =====
+    const bottomBar = document.getElementById('bottom-bar');
+    let barVisible = true;
+    bottomBar.classList.add('visible');
+
+    document.getElementById('reader-area').addEventListener('click', (e) => {
+      if (e.target.closest('a') || e.target.closest('button') || e.target.closest('.reader-nav')) return;
+      barVisible = !barVisible;
+      bottomBar.classList.toggle('visible', barVisible);
+    });
+
+    // ===== 进度条 + 滚动位置记忆 =====
+    let scrollSaveTimer = null;
     window.addEventListener('scroll', () => {
       const h = document.documentElement.scrollHeight - window.innerHeight;
       const pct = h > 0 ? (window.scrollY / h * 100) : 0;
       document.getElementById('progress-bar').style.width = pct + '%';
-      // 返回顶部按钮
       document.getElementById('back-top').classList.toggle('visible', window.scrollY > 400);
+
+      // 节流保存滚动位置
+      if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
+      scrollSaveTimer = setTimeout(saveScrollPosition, 1000);
     });
 
-    // 键盘快捷键
+    function saveScrollPosition() {
+      if (!window._chapterMeta) return;
+      const m = window._chapterMeta;
+      const h = document.documentElement.scrollHeight - window.innerHeight;
+      const pct = h > 0 ? (window.scrollY / h) : 0;
+      const progress = {
+        chapterId: m.chapterId, chapterTitle: m.chapterTitle,
+        bookTitle: m.bookTitle, bookId: m.bookId,
+        scrollPct: pct, time: Date.now()
+      };
+      localStorage.setItem(`reading_${m.bookId}`, JSON.stringify(progress));
+    }
+
+    // ===== 键盘快捷键 =====
+    let prevUrl = null, nextUrl = null, backUrl = null;
     document.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === 'ArrowLeft' && prevUrl) location.href = prevUrl;
       if (e.key === 'ArrowRight' && nextUrl) location.href = nextUrl;
-      if (e.key === 'Escape' && backUrl) location.href = backUrl;
+      if (e.key === 'Escape') {
+        if (settingsOverlay.classList.contains('active')) settingsOverlay.classList.remove('active');
+        else if (tocOverlay.classList.contains('active')) tocOverlay.classList.remove('active');
+        else if (backUrl) location.href = backUrl;
+      }
     });
 
-    let prevUrl = null, nextUrl = null, backUrl = null;
-
-    // 加载站点设置
+    // ===== 加载站点设置 =====
     fetch('/api/settings').then(r => r.json()).then(d => {
       const s = d.settings || {};
       if (s.site_name) document.querySelector('.navbar h1 a').textContent = '📚 ' + s.site_name;
     }).catch(() => {});
 
+    // ===== 预加载缓存 =====
+    let prefetchedNext = null;
+
+    // ===== 加载章节 =====
     const chapterId = new URLSearchParams(location.search).get('id');
     if (!chapterId || !/^\d+$/.test(chapterId)) {
       document.getElementById('content').innerHTML = '<div class="msg msg-error">无效的章节ID</div>';
@@ -95,10 +284,24 @@
     async function loadChapter() {
       const el = document.getElementById('content');
       try {
-        const res = await fetch(`/api/chapters/${chapterId}`);
-        if (!res.ok) throw new Error(res.status === 404 ? '章节不存在' : '加载失败');
-        const data = await res.json();
+        // 检查是否有预加载缓存
+        let data;
+        if (prefetchedNext && prefetchedNext.chapter && String(prefetchedNext.chapter.id) === chapterId) {
+          data = prefetchedNext;
+          prefetchedNext = null;
+        } else {
+          const res = await fetch(`/api/chapters/${chapterId}`);
+          if (!res.ok) throw new Error(res.status === 404 ? '章节不存在' : '加载失败');
+          data = await res.json();
+        }
         const c = data.chapter;
+
+        // 存储元数据
+        window._chapterMeta = {
+          chapterId: c.id, chapterTitle: c.title,
+          bookTitle: c.book_title, bookId: c.book_id
+        };
+        window._chapterData = { content: data.content, title: c.title };
 
         // SEO
         document.title = esc(c.title) + ' - ' + esc(c.book_title);
@@ -111,7 +314,7 @@
         document.getElementById('breadcrumb').innerHTML =
           `<a href="/">书架</a><span>›</span><a href="/book.html?id=${c.book_id}">${esc(c.book_title)}</a><span>›</span>${esc(c.title)}`;
 
-        // 正文（textContent防XSS）
+        // 正文
         const contentDiv = document.createElement('div');
         contentDiv.className = 'reader-content';
         contentDiv.textContent = data.content;
@@ -125,24 +328,69 @@
         nav.innerHTML = `
           ${prevUrl ? `<a href="${prevUrl}">← ${esc(data.prevChapter.title)}</a>` : '<span class="disabled">已是第一章</span>'}
           <a href="/book.html?id=${c.book_id}">目录</a>
-          <a href="#" onclick="exportThis();return false" style="font-size:13px">导出TXT</a>
+          <a href="#" id="export-btn" style="font-size:13px">导出TXT</a>
           ${nextUrl ? `<a href="${nextUrl}">${esc(data.nextChapter.title)} →</a>` : '<span class="disabled">已是最新章</span>'}
         `;
-
-        // 存储当前章节数据用于导出
-        window._chapterData = { content: data.content, title: c.title };
 
         el.innerHTML = `<h2>${esc(c.title)}</h2>`;
         el.appendChild(contentDiv);
         el.appendChild(nav);
 
+        // 导出按钮事件
+        document.getElementById('export-btn').addEventListener('click', (e) => { e.preventDefault(); exportThis(); });
+
+        // 底部工具栏按钮
+        document.getElementById('bar-prev').onclick = () => { if (prevUrl) location.href = prevUrl; };
+        document.getElementById('bar-next').onclick = () => { if (nextUrl) location.href = nextUrl; };
+        document.getElementById('bar-prev').style.opacity = prevUrl ? '1' : '0.3';
+        document.getElementById('bar-next').style.opacity = nextUrl ? '1' : '0.3';
+
         // 保存阅读进度
-        localStorage.setItem(`reading_${c.book_id}`, JSON.stringify({
-          chapterId: c.id, title: c.title, time: Date.now()
-        }));
+        saveScrollPosition();
+
+        // 恢复滚动位置
+        restoreScrollPosition(c.book_id, c.id);
+
+        // 加载目录
+        loadTOC(c.book_id, c.id);
+
+        // 预加载下一章
+        if (data.nextChapter) {
+          setTimeout(() => {
+            fetch(`/api/chapters/${data.nextChapter.id}`)
+              .then(r => r.json())
+              .then(d => { prefetchedNext = d; })
+              .catch(() => {});
+          }, 2000);
+        }
       } catch (e) {
         el.innerHTML = `<div class="msg msg-error">${esc(e.message)}</div>`;
       }
+    }
+
+    function restoreScrollPosition(bookId, currentChapterId) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`reading_${bookId}`));
+        if (saved && saved.chapterId === currentChapterId && saved.scrollPct > 0) {
+          // 等DOM渲染完再恢复
+          requestAnimationFrame(() => {
+            const h = document.documentElement.scrollHeight - window.innerHeight;
+            if (h > 0) window.scrollTo(0, h * saved.scrollPct);
+          });
+        }
+      } catch {}
+    }
+
+    async function loadTOC(bookId, currentChapterId) {
+      try {
+        const res = await fetch(`/api/books/${bookId}`);
+        const data = await res.json();
+        const list = document.getElementById('toc-list');
+        document.getElementById('toc-title').textContent = data.book.title;
+        list.innerHTML = (data.chapters || []).map(ch =>
+          `<li><a href="/read.html?id=${ch.id}" class="${ch.id === currentChapterId ? 'current' : ''}">${esc(ch.title)}</a></li>`
+        ).join('');
+      } catch {}
     }
 
     function esc(s) {
