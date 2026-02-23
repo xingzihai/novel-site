@@ -39,51 +39,24 @@
 - **D1**：SQLite 数据库，存储书籍/章节元数据、用户、会话
 - **R2**：对象存储，存储章节正文内容
 
-## 🚀 一键部署
-
-### 前置条件
-
-- [Node.js](https://nodejs.org/) 18+
-- [Cloudflare 账号](https://dash.cloudflare.com/sign-up)（免费）
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
-
-### 自动部署
+## 🚀 快速部署
 
 ```bash
 git clone https://github.com/xingzihai/novel-site.git
 cd novel-site
-chmod +x setup.sh
-./setup.sh
-```
 
-脚本会自动完成：创建 D1 数据库 → 创建 R2 存储桶 → 初始化数据表 → 设置管理员密码 → 部署到 Cloudflare Pages
-
-### 手动部署
-
-```bash
-# 1. 安装 Wrangler
-npm install -g wrangler
-
-# 2. 登录 Cloudflare
 wrangler login
-
-# 3. 创建 D1 数据库
-wrangler d1 create novel-db
-# 记下输出的 database_id，填入 wrangler.toml
-
-# 4. 创建 R2 存储桶
+wrangler d1 create novel-db          # 记下 database_id，填入 wrangler.toml
 wrangler r2 bucket create novel-storage
-
-# 5. 初始化数据表
+wrangler pages deploy .
+wrangler pages secret put ADMIN_PASSWORD --project-name novel-site
 wrangler d1 execute novel-db --file schema.sql --remote
-
-# 6. 设置管理员密码
-wrangler pages secret put ADMIN_PASSWORD
-# 输入你的密码（至少8位，包含字母和数字）
-
-# 7. 部署
 wrangler pages deploy .
 ```
+
+> 📖 **完整的手把手教程（含原理讲解）**：[零成本！用 Cloudflare 四件套搭建你的私人小说站，全程不花一分钱](https://linux.do/t/topic/1638705)
+>
+> 从注册账号到部署上线，每一步都有截图和详细解释，小白也能跟着做完。
 
 ## 📁 项目结构
 
