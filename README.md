@@ -4,6 +4,9 @@
 
 一个完全运行在 Cloudflare 免费套餐上的私人小说阅读站。纯 HTML/CSS/JS，无框架依赖，部署简单，适合个人使用。
 
+📖 **详细教程**：[零成本！用 Cloudflare 四件套搭建你的私人小说站](https://linux.do/t/topic/1638705)
+🌐 **在线演示**：[novel-site-6ba.pages.dev](https://novel-site-6ba.pages.dev)
+
 ## ✨ 功能特性
 
 - 📱 响应式设计，手机/平板/电脑自适应
