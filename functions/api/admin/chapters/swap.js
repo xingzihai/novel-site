@@ -26,6 +26,11 @@ export async function onRequestPost(context) {
   const c2 = await env.DB.prepare('SELECT id, book_id, sort_order FROM chapters WHERE id = ?').bind(id2).first();
   if (!c1 || !c2) return Response.json({ error: 'Chapter not found' }, { status: 404 });
 
+  // 必须属于同一本书
+  if (c1.book_id !== c2.book_id) {
+    return Response.json({ error: '只能交换同一本书的章节' }, { status: 400 });
+  }
+
   // demo只能操作自己书的章节（两侧都检查）
   if (!await checkBookOwnership(auth, env, c1.book_id)) {
     return Response.json({ error: '只能操作自己书籍的章节' }, { status: 403 });

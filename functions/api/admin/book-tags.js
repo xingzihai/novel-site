@@ -10,6 +10,7 @@ export async function onRequestPut(context) {
   if (!body || !body.book_id) return Response.json({ error: 'book_id required' }, { status: 400 });
   if (!validateId(String(body.book_id))) return Response.json({ error: 'Invalid book_id' }, { status: 400 });
   if (!Array.isArray(body.tag_ids)) return Response.json({ error: 'tag_ids array required' }, { status: 400 });
+  if (body.tag_ids.length > 20) return Response.json({ error: '最多 20 个标签' }, { status: 400 });
 
   // 验证每个 tag_id
   for (const tagId of body.tag_ids) {

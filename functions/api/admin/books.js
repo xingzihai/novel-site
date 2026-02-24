@@ -1,5 +1,5 @@
 // POST /api/admin/books — 创建新书籍
-import { checkAdmin, parseJsonBody } from '../_utils.js';
+import { checkAdmin, parseJsonBody, requireMinRole } from '../_utils.js';
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -9,6 +9,14 @@ export async function onRequestPost(context) {
     const status = auth.reason === 'locked' ? 429 : 401;
     const msg = auth.reason === 'locked' ? 'Too many failed attempts, try again later' : 'Unauthorized';
     return Response.json({ error: msg }, { status });
+  }
+
+  // demo 用户配额：最多 10 本书
+  if (!requireMinRole(auth, 'admin')) {
+    const { count } = await env.DB.prepare(
+      'SELECT COUNT(*) as count FROM books WHERE created_by = ?'
+    ).bind(auth.userId).first();
+    if (count >= 10) return Response.json({ error: '演示账号最多创建 10 本书' }, { status: 403 });
   }
 
   const body = await parseJsonBody(request);

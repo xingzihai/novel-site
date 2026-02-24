@@ -65,6 +65,7 @@ export async function onRequestPost(context) {
     if (!result.ok) {
       const msg = result.reason === 'wrong_old' ? '旧密码错误'
         : result.reason === 'too_short' ? '新密码至少8位'
+        : result.reason === 'too_long' ? '新密码最长128位'
         : result.reason === 'too_weak' ? '新密码需包含字母和数字'
         : '修改失败';
       return Response.json({ error: msg }, { status: 400 });

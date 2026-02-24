@@ -29,6 +29,7 @@ export async function onRequestPost(context) {
   if (username.length < 2 || username.length > 32) return Response.json({ error: '用户名长度2-32位' }, { status: 400 });
   if (!/^[a-zA-Z0-9_]+$/.test(username)) return Response.json({ error: '用户名只能包含字母数字下划线' }, { status: 400 });
   if (password.length < 8) return Response.json({ error: '密码至少8位' }, { status: 400 });
+  if (password.length > 128) return Response.json({ error: '密码最长128位' }, { status: 400 });
   if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) return Response.json({ error: '密码需包含字母和数字' }, { status: 400 });
 
   const validRoles = ['super_admin', 'admin', 'demo'];
@@ -70,8 +71,12 @@ export async function onRequestDelete(context) {
   }
 
   await env.DB.prepare('DELETE FROM admin_sessions WHERE user_id = ?').bind(body.id).run();
-  // 将该用户创建的书籍转为无主（防ID复用导致权限混乱）
-  await env.DB.prepare('UPDATE books SET created_by = NULL WHERE created_by = ?').bind(body.id).run();
+  // 将该用户创建的书籍转移给第一个超管
+  const superAdmin = await env.DB.prepare(
+    "SELECT id FROM admin_users WHERE role = 'super_admin' AND id != ? ORDER BY id ASC LIMIT 1"
+  ).bind(body.id).first();
+  const newOwner = superAdmin ? superAdmin.id : auth.userId;
+  await env.DB.prepare('UPDATE books SET created_by = ? WHERE created_by = ?').bind(newOwner, body.id).run();
   await env.DB.prepare('DELETE FROM admin_users WHERE id = ?').bind(body.id).run();
 
   return Response.json({ success: true, message: `管理员 ${user.username} 已删除` });
@@ -122,6 +127,11 @@ export async function onRequestPut(context) {
 
   await env.DB.prepare(`UPDATE admin_users SET ${sets.join(', ')} WHERE id = ?`)
     .bind(...binds).run();
+
+  // 角色变更时清除目标用户所有 session，强制重新登录
+  if (hasRole) {
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE user_id = ?').bind(body.id).run().catch(() => {});
+  }
 
   return Response.json({ success: true });
 }

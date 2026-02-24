@@ -5,8 +5,8 @@ export async function onRequestGet(context) {
   const q = (url.searchParams.get('q') || '').trim();
   const bookId = url.searchParams.get('book_id');
 
-  if (!q || q.length < 1) {
-    return Response.json({ error: 'Query too short' }, { status: 400 });
+  if (!q || q.length < 2) {
+    return Response.json({ error: '搜索词至少 2 个字符' }, { status: 400 });
   }
 
   // 限制查询长度

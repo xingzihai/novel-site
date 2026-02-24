@@ -8,12 +8,16 @@ export async function onRequest(context) {
 
   // OPTIONS 预检请求
   if (context.request.method === 'OPTIONS') {
+    // admin/auth API 不返回 CORS 头（仅同源访问）
+    if (isAdminApi) {
+      return new Response(null, { status: 204 });
+    }
     const headers = {
+      'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Max-Age': '86400',
     };
-    if (corsOrigin) headers['Access-Control-Allow-Origin'] = corsOrigin;
     return new Response(null, { status: 204, headers });
   }
 

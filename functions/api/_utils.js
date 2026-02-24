@@ -168,8 +168,16 @@ export async function login(env, username, password, ip) {
 
   if (!user) {
     await recordFailedAttempt(env, ipHash);
+    // 同时记录 username 维度限流
+    const usernameHash = await sha256Hash('user:' + username);
+    await recordFailedAttempt(env, usernameHash);
     return { ok: false, reason: 'wrong' };
   }
+
+  // 检查 username 维度限流
+  const usernameHash = await sha256Hash('user:' + username);
+  const userLocked = await isIpLocked(env, usernameHash);
+  if (userLocked) return { ok: false, reason: 'locked' };
 
   // GitHub OAuth 用户不能用密码登录
   if (user.password_hash === 'github_oauth:no_password') {
@@ -180,6 +188,7 @@ export async function login(env, username, password, ip) {
 
   if (!result.match) {
     await recordFailedAttempt(env, ipHash);
+    await recordFailedAttempt(env, usernameHash);
     return { ok: false, reason: 'wrong' };
   }
 
@@ -221,6 +230,7 @@ export async function changePassword(env, userId, oldPassword, newPassword) {
   if (!result.match) return { ok: false, reason: 'wrong_old' };
 
   if (!newPassword || newPassword.length < 8) return { ok: false, reason: 'too_short' };
+  if (newPassword.length > 128) return { ok: false, reason: 'too_long' };
   if (!/[a-zA-Z]/.test(newPassword) || !/\d/.test(newPassword)) {
     return { ok: false, reason: 'too_weak' };
   }
