@@ -1,5 +1,5 @@
 // Service Worker for 我的书架 PWA
-const CACHE_NAME = 'novel-site-v1';
+const CACHE_NAME = 'novel-site-v2';
 const APP_SHELL = ['/', '/index.html', '/book.html', '/read.html', '/style.css', '/manifest.json', '/icon.svg'];
 
 // Install: cache app shell
