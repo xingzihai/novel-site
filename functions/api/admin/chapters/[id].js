@@ -73,6 +73,7 @@ export async function onRequestDelete(context) {
     return Response.json({ error: '只能删除自己书籍的章节' }, { status: 403 });
   }
 
+  await env.DB.prepare('DELETE FROM chapter_stats WHERE chapter_id = ?').bind(params.id).run().catch(() => {});
   await env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(params.id).run();
   await env.R2.delete(chapter.content_key).catch(() => {});
 

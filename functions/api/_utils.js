@@ -146,6 +146,7 @@ export async function checkAdmin(request, env) {
   if (Math.random() < 0.1) {
     await env.DB.prepare("DELETE FROM admin_sessions WHERE expires_at < datetime('now')").run().catch(() => {});
     await env.DB.prepare("DELETE FROM auth_attempts WHERE last_attempt < datetime('now', '-1 day')").run().catch(() => {});
+    await env.DB.prepare("DELETE FROM site_settings WHERE key LIKE 'oauth_state:%' AND value < datetime('now')").run().catch(() => {});
   }
 
     // 兼容旧角色：editor → admin
@@ -199,7 +200,7 @@ export async function login(env, username, password, ip) {
 
   // 限制单用户最多10个活跃session，删除最旧的
   await env.DB.prepare(
-    "DELETE FROM admin_sessions WHERE user_id = ? AND id NOT IN (SELECT id FROM admin_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10)"
+    "DELETE FROM admin_sessions WHERE user_id = ? AND token NOT IN (SELECT token FROM admin_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10)"
   ).bind(user.id, user.id).run().catch(() => {});
 
   await env.DB.prepare("DELETE FROM admin_sessions WHERE expires_at < datetime('now')").run().catch(() => {});
@@ -332,7 +333,7 @@ export async function createSession(env, userId) {
     .bind(tokenHash, userId, expiresAt).run();
   // 限制单用户最多10个活跃session
   await env.DB.prepare(
-    "DELETE FROM admin_sessions WHERE user_id = ? AND id NOT IN (SELECT id FROM admin_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10)"
+    "DELETE FROM admin_sessions WHERE user_id = ? AND token NOT IN (SELECT token FROM admin_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10)"
   ).bind(userId, userId).run().catch(() => {});
   return { token, expiresAt };
 }

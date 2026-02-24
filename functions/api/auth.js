@@ -111,15 +111,21 @@ export async function onRequestGet(context) {
     crypto.getRandomValues(stateBytes);
     const state = [...stateBytes].map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // HMAC 签名 state，存入 httpOnly cookie
-    const signature = await hmacSign(state, clientSecretRow.value);
-    const cookie = `github_oauth_state=${state}.${signature}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`;
+    // HMAC 签名 state，用 ADMIN_PASSWORD 作为独立密钥（不复用 client_secret）
+    const hmacKey = env.ADMIN_PASSWORD || clientSecretRow.value;
+    const signature = await hmacSign(state, hmacKey);
+    const cookie = `__Host-github_oauth_state=${state}.${signature}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`;
+
+    // state 存 DB 做一次性消费
+    await env.DB.prepare(
+      "INSERT INTO site_settings (key, value) VALUES (?, datetime('now', '+10 minutes'))"
+    ).bind('oauth_state:' + state).run().catch(() => {});
 
     const redirectUri = new URL('/api/auth/github/callback', url.origin).toString();
     const params = new URLSearchParams({
       client_id: clientIdRow.value,
       redirect_uri: redirectUri,
-      scope: 'read:user',
+      scope: '',
       state,
     });
 

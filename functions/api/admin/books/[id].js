@@ -64,6 +64,8 @@ export async function onRequestDelete(context) {
   if (book.cover_key) await env.R2.delete(book.cover_key).catch(() => {});
 
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM chapter_stats WHERE chapter_id IN (SELECT id FROM chapters WHERE book_id = ?)').bind(params.id),
+    env.DB.prepare('DELETE FROM book_stats WHERE book_id = ?').bind(params.id),
     env.DB.prepare('DELETE FROM book_tags WHERE book_id = ?').bind(params.id),
     env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(params.id),
     env.DB.prepare('DELETE FROM books WHERE id = ?').bind(params.id),

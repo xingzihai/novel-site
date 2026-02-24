@@ -28,14 +28,14 @@ export async function onRequestPost(context) {
 
   const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg';
   const key = `covers/${bookId}.${ext}`;
+  const oldKey = book.cover_key;
 
-  // 删除旧封面
-  if (book.cover_key) {
-    await env.R2.delete(book.cover_key).catch(() => {});
-  }
-
+  // 先写新封面，再删旧封面（防止 put 失败导致封面丢失）
   await env.R2.put(key, file.stream(), { httpMetadata: { contentType: ct } });
   await env.DB.prepare('UPDATE books SET cover_key = ? WHERE id = ?').bind(key, bookId).run();
+  if (oldKey && oldKey !== key) {
+    await env.R2.delete(oldKey).catch(() => {});
+  }
 
   return Response.json({ success: true, cover_key: key });
 }

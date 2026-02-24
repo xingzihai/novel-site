@@ -22,7 +22,7 @@ export async function onRequestGet(context) {
 
   // 1. 验证 state（从签名 cookie 中取出）
   const cookieHeader = request.headers.get('Cookie') || '';
-  const match = cookieHeader.match(/github_oauth_state=([^;]+)/);
+  const match = cookieHeader.match(/__Host-github_oauth_state=([^;]+)/);
   if (!match) {
     return new Response('Missing state cookie', { status: 403 });
   }
@@ -30,6 +30,20 @@ export async function onRequestGet(context) {
   const [stateValue, signature] = match[1].split('.');
   if (!stateValue || !signature || stateValue !== state) {
     return new Response('Invalid state', { status: 403 });
+  }
+
+  // 从 DB 检查 state 是否已消费（一次性使用）
+  const stateKey = 'oauth_state:' + stateValue;
+  const stateRow = await env.DB.prepare("SELECT value FROM site_settings WHERE key = ?").bind(stateKey).first();
+  if (!stateRow) {
+    return new Response('State already consumed or expired', { status: 403 });
+  }
+  // 立即删除，确保一次性消费
+  await env.DB.prepare("DELETE FROM site_settings WHERE key = ?").bind(stateKey).run();
+
+  // 检查 state 是否过期
+  if (new Date(stateRow.value) < new Date()) {
+    return new Response('State expired', { status: 403 });
   }
 
   // 从 DB 读取 client_secret 用于验证 HMAC
@@ -41,7 +55,9 @@ export async function onRequestGet(context) {
     });
   }
 
-  const valid = await hmacVerify(stateValue, signature, clientSecretRow.value);
+  // HMAC 验证用独立密钥（ADMIN_PASSWORD），不复用 client_secret
+  const hmacKey = env.ADMIN_PASSWORD || clientSecretRow.value;
+  const valid = await hmacVerify(stateValue, signature, hmacKey);
   if (!valid) {
     return new Response('State signature invalid', { status: 403 });
   }
@@ -146,7 +162,7 @@ export async function onRequestGet(context) {
   const session = await createSession(env, user.id);
 
   // 7. 重定向回前端，token 通过 URL hash 传递（hash 不会发送到服务器）
-  const clearCookie = 'github_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
+  const clearCookie = '__Host-github_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
   return new Response(null, {
     status: 302,
     headers: {
