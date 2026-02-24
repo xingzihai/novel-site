@@ -5,7 +5,7 @@ compatibility_date = "2026-02-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "novel-db"
-database_id = "你的-database-id-在这里"
+database_id = "807ef966-4df8-4eca-bcad-95d186775be0"
 
 [[r2_buckets]]
 binding = "R2"

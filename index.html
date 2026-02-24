@@ -8,6 +8,8 @@
   <meta property="og:title" content="我的书架">
   <meta property="og:description" content="私人小说站，零成本搭建在 Cloudflare 上">
   <link rel="stylesheet" href="/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#d4a574">
 </head>
 <body>
   <div class="navbar">
@@ -21,6 +23,7 @@
   <div class="container">
     <div id="continue-reading"></div>
     <div id="reading-stats"></div>
+    <div id="tag-filter"></div>
     <div class="search-bar">
       <input type="text" id="search-input" placeholder="搜索书名或作者..." autocomplete="off">
       <button onclick="doSearch()">搜索</button>
@@ -105,6 +108,9 @@
 
     // 搜索
     let allBooks = [];
+    let allTags = [];
+    let activeTagId = null;
+
     function doSearch() {
       const q = document.getElementById('search-input').value.trim().toLowerCase();
       const resultsEl = document.getElementById('search-results');
@@ -149,30 +155,103 @@
     async function loadBooks() {
       const el = document.getElementById('content');
       try {
-        const res = await fetch('/api/books');
-        if (!res.ok) throw new Error('加载失败');
-        const data = await res.json();
-        allBooks = data.books || [];
+        const [booksRes, tagsRes] = await Promise.all([
+          fetch('/api/books'),
+          fetch('/api/tags').catch(() => ({ json: () => ({ tags: [] }) }))
+        ]);
+        const booksData = await booksRes.json();
+        if (!booksRes.ok) throw new Error('加载失败');
+        allBooks = booksData.books || [];
+
+        try { allTags = (await tagsRes.json()).tags || []; } catch { allTags = []; }
+        renderTagFilter();
+
         renderContinueReading();
-        // 渲染阅读统计
         renderReadingStats();
-        if (allBooks.length === 0) {
-          el.innerHTML = '<div class="empty"><p>📖 书架空空如也</p><p>去<a href="/admin.html">管理后台</a>添加第一本书吧</p></div>';
-          return;
-        }
-        el.className = 'book-grid';
-        el.innerHTML = allBooks.map(b => `
-          <a class="book-card" href="/book.html?id=${b.id}">
-            <h3>${esc(b.title)}</h3>
-            <div class="meta">
-              ${b.author ? esc(b.author) + ' · ' : ''}${b.chapter_count} 章 · ${formatWords(b.total_words)}
-            </div>
-            ${b.description ? `<div class="desc">${esc(b.description)}</div>` : ''}
-          </a>
-        `).join('');
+        renderBooks(allBooks);
       } catch (e) {
         el.innerHTML = `<div class="msg msg-error">加载失败：${esc(e.message)}</div>`;
       }
+    }
+
+    function renderTagFilter() {
+      const container = document.getElementById('tag-filter');
+      if (allTags.length === 0) { container.innerHTML = ''; return; }
+      container.innerHTML = '<div class="tag-filter-bar" id="tag-bar"></div>';
+      const bar = document.getElementById('tag-bar');
+      const allPill = document.createElement('span');
+      allPill.className = 'tag-pill' + (activeTagId === null ? ' active' : '');
+      allPill.textContent = '全部';
+      allPill.style.background = 'var(--bg)'; allPill.style.color = 'var(--text)';
+      allPill.style.border = '1px solid var(--border)';
+      bar.appendChild(allPill);
+      for (const tag of allTags) {
+        const pill = document.createElement('span');
+        pill.className = 'tag-pill' + (activeTagId === tag.id ? ' active' : '');
+        pill.textContent = tag.name;
+        pill.style.background = tag.color + '22'; pill.style.color = tag.color;
+        pill.dataset.tagId = tag.id;
+        bar.appendChild(pill);
+      }
+      bar.addEventListener('click', (e) => {
+        const pill = e.target.closest('.tag-pill');
+        if (!pill) return;
+        const tagId = pill.dataset.tagId ? Number(pill.dataset.tagId) : null;
+        activeTagId = tagId;
+        renderTagFilter();
+        filterAndRenderBooks();
+      });
+    }
+
+    function filterAndRenderBooks() {
+      let filtered = allBooks;
+      if (activeTagId !== null) {
+        filtered = allBooks.filter(b => (b.tags || []).some(t => t.id === activeTagId));
+      }
+      renderBooks(filtered);
+    }
+
+    // 封面颜色生成
+    const COVER_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e91e63','#00bcd4','#ff5722'];
+    function coverColor(title) { let h = 0; for (let i = 0; i < (title||'').length; i++) h = ((h << 5) - h + title.charCodeAt(i)) | 0; return COVER_COLORS[Math.abs(h) % COVER_COLORS.length]; }
+
+    function renderBooks(books) {
+      const el = document.getElementById('content');
+      if (books.length === 0) {
+        if (allBooks.length === 0) {
+          el.className = '';
+          el.innerHTML = '<div class="empty"><p>📖 书架空空如也</p><p>去<a href="/admin.html">管理后台</a>添加第一本书吧</p></div>';
+        } else {
+          el.className = '';
+          el.innerHTML = '<div class="empty"><p>没有匹配的书籍</p></div>';
+        }
+        return;
+      }
+      el.className = 'book-grid-cover';
+      el.innerHTML = books.map(b => {
+        const tagsHtml = (b.tags || []).map(t => `<span class="tag-pill" style="background:${esc(t.color)}22;color:${esc(t.color)}">${esc(t.name)}</span>`).join('');
+        if (b.cover_key) {
+          return `<a class="book-card-cover" href="/book.html?id=${b.id}">
+            <img class="cover-img" src="/api/covers/${b.id}" alt="${esc(b.title)}" loading="lazy">
+            <div class="card-body">
+              <h3>${esc(b.title)}</h3>
+              <div class="meta">${b.author ? esc(b.author) + ' · ' : ''}${b.chapter_count}章</div>
+              ${tagsHtml ? '<div class="card-tags">' + tagsHtml + '</div>' : ''}
+            </div>
+          </a>`;
+        } else {
+          const color = coverColor(b.title);
+          const firstChar = (b.title || '?')[0];
+          return `<a class="book-card-cover" href="/book.html?id=${b.id}">
+            <div class="cover-placeholder" style="background:${color}">${esc(firstChar)}</div>
+            <div class="card-body">
+              <h3>${esc(b.title)}</h3>
+              <div class="meta">${b.author ? esc(b.author) + ' · ' : ''}${b.chapter_count}章</div>
+              ${tagsHtml ? '<div class="card-tags">' + tagsHtml + '</div>' : ''}
+            </div>
+          </a>`;
+        }
+      }).join('');
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
     function formatWords(n) {
@@ -180,6 +259,11 @@
       return n + ' 字';
     }
     loadBooks();
+
+    // PWA Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
 
     // 加载站点设置
     fetch('/api/settings').then(r => r.json()).then(d => {

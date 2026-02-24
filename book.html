@@ -6,6 +6,8 @@
   <title>作品详情</title>
   <meta name="description" content="">
   <link rel="stylesheet" href="/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#d4a574">
 </head>
 <body>
   <div class="navbar">
@@ -54,6 +56,11 @@
       if (s.site_name) document.querySelector('.navbar h1 a').textContent = '📚 ' + s.site_name;
     }).catch(() => {});
 
+    // PWA Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
     async function loadBook() {
       const el = document.getElementById('content');
       try {
@@ -68,13 +75,34 @@
         document.querySelector('meta[name="description"]').content = b.description || b.title;
         document.getElementById('bc-title').textContent = b.title;
 
-        let html = `
-          <div class="book-header">
-            <h2>${esc(b.title)}</h2>
-            ${b.author ? `<div class="author">作者：${esc(b.author)}</div>` : ''}
-            ${b.description ? `<div class="desc">${esc(b.description)}</div>` : ''}
-          </div>
-        `;
+        const tagsHtml = (b.tags || []).map(t => `<span class="tag-pill" style="background:${esc(t.color)}22;color:${esc(t.color)}">${esc(t.name)}</span>`).join('');
+        const tagsBlock = tagsHtml ? `<div class="book-tags">${tagsHtml}</div>` : '';
+
+        let html;
+        if (b.cover_key) {
+          html = `
+            <div class="book-header">
+              <div class="book-header-with-cover">
+                <img class="book-cover-img" src="/api/covers/${b.id}" alt="${esc(b.title)}">
+                <div class="book-info">
+                  <h2>${esc(b.title)}</h2>
+                  ${b.author ? `<div class="author">作者：${esc(b.author)}</div>` : ''}
+                  ${b.description ? `<div class="desc">${esc(b.description)}</div>` : ''}
+                  ${tagsBlock}
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          html = `
+            <div class="book-header">
+              <h2>${esc(b.title)}</h2>
+              ${b.author ? `<div class="author">作者：${esc(b.author)}</div>` : ''}
+              ${b.description ? `<div class="desc">${esc(b.description)}</div>` : ''}
+              ${tagsBlock}
+            </div>
+          `;
+        }
         if (chapters.length > 0) {
           html += `<div class="search-bar" style="margin-top:16px;margin-bottom:0"><input type="text" id="chapter-search" placeholder="搜索章节标题..." autocomplete="off"><button onclick="filterChapters()">搜索</button></div>`;
         }

@@ -68,6 +68,17 @@ async function ensureSchema(env) {
   } catch {
     // 列已存在，静默忽略
   }
+  // 书籍封面
+  try {
+    await env.DB.prepare('ALTER TABLE books ADD COLUMN cover_key TEXT DEFAULT NULL').run();
+  } catch {}
+  // 标签系统
+  try {
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, color TEXT DEFAULT \'#888\')').run();
+  } catch {}
+  try {
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS book_tags (book_id INTEGER, tag_id INTEGER, PRIMARY KEY (book_id, tag_id))').run();
+  } catch {}
 }
 
 // ===== 默认管理员（拒绝无密码创建） =====
