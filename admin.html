@@ -279,7 +279,7 @@
       <!-- 标签管理 -->
       <div class="admin-section">
         <h3>🏷️ 标签管理</h3>
-        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:end">
+        <div id="tag-create-area" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:end">
           <div>
             <label style="font-size:12px;color:var(--text-light)">标签名</label>
             <input type="text" id="tag-name" placeholder="标签名称" maxlength="30" style="width:140px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text)">
@@ -550,6 +550,9 @@
       // demo用户显示注销按钮
       const deactivateBtn = document.getElementById('deactivate-account-btn');
       if (deactivateBtn) deactivateBtn.style.display = role === 'demo' ? '' : 'none';
+      // demo用户隐藏标签创建区域（但可以在书籍编辑弹窗中给自己的书选标签）
+      const tagCreateArea = document.getElementById('tag-create-area');
+      if (tagCreateArea) tagCreateArea.style.display = role === 'demo' ? 'none' : '';
       refreshAllBooks(); loadSettings(); loadStats(); loadFontList();
       if (role === 'super_admin') { loadAdminUsers(); loadGitHubConfig(); }
     }
@@ -862,10 +865,11 @@
     let _chaptersCache = [];
 
     // 共享 fetchBooks：合并 loadBookList 和 loadBookSelects 的 API 调用
+    // 必须带 Authorization header，否则后端不返回 created_by，demo 无法判断所有权
     let _booksPromise = null;
     function fetchBooks() {
       if (!_booksPromise) {
-        _booksPromise = fetch('/api/books').then(r => r.json()).then(d => {
+        _booksPromise = api('GET', '/api/books').then(r => r.json()).then(d => {
           _booksPromise = null;
           return d;
         }).catch(e => { _booksPromise = null; throw e; });
@@ -1139,7 +1143,7 @@
     // ===== 数据概览 =====
     async function loadStats() {
       try {
-        const res = await fetch('/api/books');
+        const res = await api('GET', '/api/books');
         const data = await res.json();
         const books = data.books || [];
         const totalChapters = books.reduce((s, b) => s + (b.chapter_count || 0), 0);
@@ -1453,7 +1457,7 @@
 
     async function refreshEpubBookSelect() {
       try {
-        const res = await fetch('/api/books');
+        const res = await api('GET', '/api/books');
         const data = await res.json();
         const sel = document.getElementById('epub-book-select');
         const allBooks = data.books || [];
@@ -1695,10 +1699,10 @@
               <span class="item-title">${esc(t.name)}</span>
               <span class="item-meta" style="margin-left:4px">${t.book_count || 0} 本书</span>
             </div>
-            <div class="item-actions">
+            ${currentRole !== 'demo' ? `<div class="item-actions">
               <button class="btn btn-sm btn-edit-tag">编辑</button>
               <button class="btn btn-sm btn-danger btn-delete-tag">删除</button>
-            </div>
+            </div>` : ''}
           </li>
         `).join('');
       } catch { document.getElementById('tag-list').innerHTML = '<li style="color:var(--text-light)">加载失败</li>'; }
