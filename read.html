@@ -28,6 +28,7 @@
     <button class="bar-btn" id="bar-toc" title="目录"><span class="bar-icon">☰</span>目录</button>
     <button class="bar-btn" id="bar-bookmark" title="书签"><span class="bar-icon" id="bookmark-icon">☆</span>书签</button>
     <button class="bar-btn" id="bar-settings" title="设置"><span class="bar-icon">⚙</span>设置</button>
+    <button class="bar-btn" id="bar-annotations" title="批注"><span class="bar-icon">📝</span>批注</button>
     <button class="bar-btn" id="bar-immersive" title="沉浸模式"><span class="bar-icon">🔲</span>沉浸</button>
     <button class="bar-btn" id="bar-next" title="下一章"><span class="bar-icon">▶</span>下一章</button>
   </div>
@@ -107,6 +108,43 @@
   <div class="pager-tap-right" id="pager-tap-right" style="display:none"></div>
   <div class="pager-indicator" id="pager-indicator"></div>
   <div class="immersive-hint" id="immersive-hint">点击中央或按 Esc 退出沉浸模式</div>
+
+  <!-- 批注浮动工具栏 -->
+  <div class="annotation-toolbar" id="annotation-toolbar">
+    <div class="toolbar-colors">
+      <span style="font-size:13px;color:var(--text-light)">高亮：</span>
+      <div class="color-dot active" data-color="#FFD700" style="background:#FFD700" title="金色"></div>
+      <div class="color-dot" data-color="#FF6B6B" style="background:#FF6B6B" title="红色"></div>
+      <div class="color-dot" data-color="#4ECDC4" style="background:#4ECDC4" title="青色"></div>
+      <div class="color-dot" data-color="#45B7D1" style="background:#45B7D1" title="蓝色"></div>
+      <div class="color-dot" data-color="#96CEB4" style="background:#96CEB4" title="绿色"></div>
+    </div>
+    <div class="toolbar-note">
+      <textarea id="annotation-note-input" placeholder="添加批注（可选）" rows="2"></textarea>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn-cancel-annotation" id="annotation-cancel">取消</button>
+      <button class="btn-save-annotation" id="annotation-save">保存</button>
+    </div>
+  </div>
+
+  <!-- 批注气泡 -->
+  <div class="annotation-tooltip" id="annotation-tooltip">
+    <div class="tooltip-text" id="tooltip-text"></div>
+    <div class="tooltip-note" id="tooltip-note"></div>
+    <div class="tooltip-meta" id="tooltip-meta"></div>
+  </div>
+
+  <!-- 批注侧边面板 -->
+  <div class="annotation-panel-overlay" id="annotation-panel-overlay">
+    <div class="annotation-panel" id="annotation-panel">
+      <h3>
+        <span>📝 批注 (<span id="annotation-count">0</span>)</span>
+        <button class="close-panel-btn" id="close-annotation-panel">✕</button>
+      </h3>
+      <div id="annotation-list"></div>
+    </div>
+  </div>
 
   <script>
     // ===== 阅读设置初始化 =====
@@ -496,6 +534,9 @@
       if (e.key === 'Escape') {
         if (immersiveActive) { exitImmersive(); return; }
         if (document.fullscreenElement) { document.exitFullscreen(); return; }
+        if (document.getElementById('annotation-panel-overlay')?.classList.contains('active')) { document.getElementById('annotation-panel-overlay').classList.remove('active'); return; }
+        const _aToolbar = document.getElementById('annotation-toolbar');
+        if (_aToolbar?.classList.contains('visible')) { _aToolbar.classList.remove('visible'); return; }
         if (settingsOverlay.classList.contains('active')) settingsOverlay.classList.remove('active');
         else if (tocOverlay.classList.contains('active')) tocOverlay.classList.remove('active');
         else if (backUrl) location.href = backUrl;
@@ -590,10 +631,18 @@
         document.getElementById('breadcrumb').innerHTML =
           `<a href="/">书架</a><span>›</span><a href="/book.html?id=${c.book_id}">${esc(c.book_title)}</a><span>›</span>${esc(c.title)}`;
 
-        // 正文
+        // 正文 — 段落化渲染（支持批注高亮）
         const contentDiv = document.createElement('div');
         contentDiv.className = 'reader-content';
-        contentDiv.textContent = data.content;
+        const paragraphs = data.content.split('\n');
+        window._paragraphs = paragraphs; // 供批注系统使用
+        paragraphs.forEach((text, idx) => {
+          const p = document.createElement('p');
+          p.className = text.trim() ? 'reader-p' : 'reader-p reader-p-empty';
+          p.setAttribute('data-p-idx', idx);
+          p.textContent = text;
+          contentDiv.appendChild(p);
+        });
 
         // 导航
         prevUrl = data.prevChapter ? `/read.html?id=${data.prevChapter.id}` : null;
@@ -658,6 +707,9 @@
 
         // 加载目录
         loadTOC(c.book_id, c.id);
+
+        // 加载批注
+        loadAnnotations(c.id);
 
         // 预加载下一章
         if (data.nextChapter) {
@@ -868,6 +920,569 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
+
+    // ===== 批注系统 =====
+    const ANNOTATION_COLORS = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'];
+    let _annotations = []; // 当前章节的批注数据
+    let _selectedColor = '#FFD700';
+    let _pendingSelection = null; // { paragraphIndex, startOffset, endOffset, text }
+    let _annotationToken = null; // 认证token
+
+    // 轻量 toast 提示
+    function showAnnotationToast(msg) {
+      let t = document.getElementById('annotation-toast');
+      if (!t) { t = document.createElement('div'); t.id = 'annotation-toast'; t.className = 'annotation-toast'; document.body.appendChild(t); }
+      t.textContent = msg; t.classList.add('visible');
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.remove('visible'), 2500);
+    }
+
+    // 未登录隐藏批注按钮
+
+    // 获取认证token
+    function getAnnotationToken() {
+      if (_annotationToken) return _annotationToken;
+      _annotationToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
+      return _annotationToken;
+    }
+
+    // 未登录隐藏批注按钮
+    if (!getAnnotationToken()) {
+      document.getElementById('bar-annotations').style.display = 'none';
+    }
+
+    function annotationApi(method, url, body) {
+      const token = getAnnotationToken();
+      if (!token) return Promise.resolve(null);
+      const opts = { method, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+      if (body) opts.body = JSON.stringify(body);
+      return fetch(url, opts);
+    }
+
+    // 加载批注
+    async function loadAnnotations(chapterId) {
+      const token = getAnnotationToken();
+      if (!token) return; // 未登录不加载批注
+      try {
+        const res = await annotationApi('GET', '/api/annotations?chapter_id=' + chapterId);
+        if (!res || !res.ok) return;
+        const data = await res.json();
+        _annotations = data.annotations || [];
+        renderAnnotationHighlights();
+        updateAnnotationCount();
+        // 高亮渲染可能改变内容尺寸，翻页模式需重新计算
+        if (typeof pagerRecalc === 'function' && settings.readingMode === 'pager') {
+          requestAnimationFrame(() => requestAnimationFrame(() => pagerRecalc()));
+        }
+      } catch {}
+    }
+
+    // 渲染高亮
+    function renderAnnotationHighlights() {
+      // 先清除所有高亮
+      document.querySelectorAll('.annotation-highlight').forEach(el => {
+        const parent = el.parentNode;
+        if (parent) {
+          parent.replaceChild(document.createTextNode(el.textContent), el);
+          parent.normalize();
+        }
+      });
+
+      if (_annotations.length === 0) return;
+
+      // 按段落分组
+      const byParagraph = {};
+      _annotations.forEach(a => {
+        if (!byParagraph[a.paragraph_index]) byParagraph[a.paragraph_index] = [];
+        byParagraph[a.paragraph_index].push(a);
+      });
+
+      for (const [pIdx, annots] of Object.entries(byParagraph)) {
+        const p = document.querySelector(`p[data-p-idx="${pIdx}"]`);
+        if (!p) continue;
+
+        const text = p.textContent;
+        // 排序：按 start_offset 升序，重叠时短的优先
+        const sorted = annots
+          .filter(a => {
+            // 校验文本是否匹配
+            const actual = text.slice(a.start_offset, a.end_offset);
+            return actual === a.selected_text;
+          })
+          .sort((a, b) => a.start_offset - b.start_offset || (a.end_offset - a.start_offset) - (b.end_offset - b.start_offset));
+
+        if (sorted.length === 0) continue;
+
+        // 构建不重叠的高亮区间（简单贪心：后来的覆盖前面的重叠部分）
+        const fragments = [];
+        let lastEnd = 0;
+
+        for (const a of sorted) {
+          const start = Math.max(a.start_offset, lastEnd);
+          const end = a.end_offset;
+          if (start >= end) continue;
+
+          if (start > lastEnd) {
+            fragments.push({ type: 'text', text: text.slice(lastEnd, start) });
+          }
+          fragments.push({ type: 'highlight', text: text.slice(start, end), annotation: a });
+          lastEnd = end;
+        }
+        if (lastEnd < text.length) {
+          fragments.push({ type: 'text', text: text.slice(lastEnd) });
+        }
+
+        // 重建段落内容
+        p.textContent = '';
+        const frag = document.createDocumentFragment();
+        for (const f of fragments) {
+          if (f.type === 'text') {
+            frag.appendChild(document.createTextNode(f.text));
+          } else {
+            const mark = document.createElement('mark');
+            mark.className = 'annotation-highlight';
+            const safeId = Number(f.annotation.id) || 0;
+            const safeColor = /^#[0-9A-Fa-f]{6}$/.test(f.annotation.color) ? f.annotation.color : '#FFD700';
+            mark.setAttribute('data-annotation-id', safeId);
+            mark.setAttribute('data-color', safeColor);
+            mark.style.background = safeColor + '4D'; // 30% opacity
+            mark.style.borderBottomColor = safeColor + '99'; // 60% opacity
+            mark.textContent = f.text;
+            frag.appendChild(mark);
+          }
+        }
+        p.appendChild(frag);
+      }
+    }
+
+    // 更新批注计数
+    function updateAnnotationCount() {
+      const el = document.getElementById('annotation-count');
+      if (el) el.textContent = _annotations.length;
+    }
+
+    // ===== 文本选择 → 弹出工具栏 =====
+    const annotationToolbar = document.getElementById('annotation-toolbar');
+    const annotationNoteInput = document.getElementById('annotation-note-input');
+
+    document.addEventListener('mouseup', handleTextSelection);
+    document.addEventListener('touchend', (e) => {
+      // 延迟处理触摸选择，等待浏览器完成选区
+      setTimeout(() => handleTextSelection(e), 200);
+    });
+
+    function handleTextSelection(e) {
+      // 忽略工具栏内的点击
+      if (e && e.target && e.target.closest('.annotation-toolbar')) return;
+      if (e && e.target && e.target.closest('.annotation-panel')) return;
+
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+        // 延迟隐藏，避免点击保存按钮时选区已消失
+        setTimeout(() => {
+          if (!_pendingSelection) hideAnnotationToolbar();
+        }, 100);
+        return;
+      }
+
+      const token = getAnnotationToken();
+      if (!token) return; // 未登录不显示工具栏
+
+      const range = selection.getRangeAt(0);
+      const startNode = range.startContainer;
+      const endNode = range.endContainer;
+
+      // 确保选区在 reader-content 内
+      const readerContent = document.querySelector('.reader-content');
+      if (!readerContent || !readerContent.contains(startNode) || !readerContent.contains(endNode)) return;
+
+      // 找到起始和结束段落
+      const startP = startNode.nodeType === Node.TEXT_NODE ? startNode.parentElement.closest('p[data-p-idx]') : startNode.closest('p[data-p-idx]');
+      const endP = endNode.nodeType === Node.TEXT_NODE ? endNode.parentElement.closest('p[data-p-idx]') : endNode.closest('p[data-p-idx]');
+
+      if (!startP || !endP) return;
+
+      // 目前只支持单段落内的批注
+      if (startP !== endP) {
+        showAnnotationToast('暂不支持跨段落批注，请在单个段落内选择');
+        return;
+      }
+
+      const pIdx = parseInt(startP.getAttribute('data-p-idx'));
+      const selectedText = selection.toString();
+
+      if (selectedText.length > 2000) return; // 太长不处理
+
+      // 计算段落内的字符偏移量
+      const pText = window._paragraphs ? window._paragraphs[pIdx] : startP.textContent;
+      const startOffset = getTextOffset(startP, range.startContainer, range.startOffset);
+      const endOffset = getTextOffset(startP, range.endContainer, range.endOffset);
+
+      if (startOffset < 0 || endOffset < 0 || startOffset >= endOffset) return;
+
+      // 校验选中文本
+      const expectedText = pText.slice(startOffset, endOffset);
+      if (expectedText !== selectedText) return;
+
+      _pendingSelection = {
+        paragraphIndex: pIdx,
+        startOffset: startOffset,
+        endOffset: endOffset,
+        text: selectedText
+      };
+
+      showAnnotationToolbar(range);
+    }
+
+    // 计算文本节点在段落中的字符偏移
+    function getTextOffset(paragraph, node, offset) {
+      let charCount = 0;
+      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT, null);
+      let current;
+      while (current = walker.nextNode()) {
+        if (current === node) {
+          return charCount + offset;
+        }
+        charCount += current.textContent.length;
+      }
+      // node 可能是元素节点
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const children = node.childNodes;
+        let count = 0;
+        const walker2 = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT, null);
+        let cur2;
+        let childIdx = 0;
+        while (cur2 = walker2.nextNode()) {
+          // 检查这个文本节点是否在 offset 之前的子节点中
+          while (childIdx < offset && children[childIdx]) {
+            if (children[childIdx].contains(cur2) || children[childIdx] === cur2) {
+              break;
+            }
+            childIdx++;
+          }
+          if (childIdx >= offset) return count;
+          count += cur2.textContent.length;
+        }
+        return count;
+      }
+      return -1;
+    }
+
+    function showAnnotationToolbar(range) {
+      const rect = range.getBoundingClientRect();
+      annotationToolbar.classList.add('visible');
+      annotationNoteInput.value = '';
+
+      // 定位：选区上方或下方
+      const toolbarH = annotationToolbar.offsetHeight || 140;
+      const toolbarW = annotationToolbar.offsetWidth || 240;
+      let top = rect.top - toolbarH - 8;
+      let left = rect.left + (rect.width - toolbarW) / 2;
+
+      if (top < 8) top = rect.bottom + 8; // 上方放不下就放下方
+      if (left < 8) left = 8;
+      if (left + toolbarW > window.innerWidth - 8) left = window.innerWidth - toolbarW - 8;
+
+      annotationToolbar.style.top = top + 'px';
+      annotationToolbar.style.left = left + 'px';
+    }
+
+    function hideAnnotationToolbar() {
+      annotationToolbar.classList.remove('visible');
+      annotationToolbar.removeAttribute('data-edit-id');
+      _pendingSelection = null;
+    }
+
+    // 颜色选择
+    document.querySelector('.toolbar-colors').addEventListener('click', (e) => {
+      const dot = e.target.closest('.color-dot');
+      if (!dot) return;
+      _selectedColor = dot.dataset.color;
+      document.querySelectorAll('.toolbar-colors .color-dot').forEach(d => d.classList.toggle('active', d === dot));
+    });
+
+    // 取消
+    document.getElementById('annotation-cancel').addEventListener('click', () => {
+      hideAnnotationToolbar();
+      window.getSelection().removeAllRanges();
+    });
+
+    // 保存批注（新建 or 编辑）
+    document.getElementById('annotation-save').addEventListener('click', async () => {
+      const btn = document.getElementById('annotation-save');
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = '保存中...';
+
+      const editId = annotationToolbar.getAttribute('data-edit-id');
+
+      try {
+        if (editId) {
+          // 编辑模式
+          const id = Number(editId);
+          const note = annotationNoteInput.value.trim();
+          const res = await annotationApi('PUT', '/api/annotations/' + id, { note: note, color: _selectedColor });
+          if (!res || !res.ok) {
+            const data = res ? await res.json() : {};
+            if (res && res.status === 401) { _annotationToken = null; alert('登录已过期，请刷新页面'); return; }
+            alert('保存失败：' + (data.error || '未知错误'));
+            return;
+          }
+          const a = _annotations.find(x => x.id === id);
+          if (a) { a.note = note; a.color = _selectedColor; }
+          renderAnnotationHighlights();
+          hideAnnotationToolbar();
+        } else if (_pendingSelection && window._chapterMeta) {
+          // 新建模式
+          const note = annotationNoteInput.value.trim();
+          const sel = _pendingSelection;
+          const res = await annotationApi('POST', '/api/annotations', {
+            chapter_id: window._chapterMeta.chapterId,
+            paragraph_index: sel.paragraphIndex,
+            start_offset: sel.startOffset,
+            end_offset: sel.endOffset,
+            selected_text: sel.text,
+            note: note,
+            color: _selectedColor
+          });
+          if (!res || !res.ok) {
+            const data = res ? await res.json() : {};
+            if (res && res.status === 401) { _annotationToken = null; alert('登录已过期，请刷新页面'); return; }
+            alert('保存失败：' + (data.error || '未知错误'));
+            return;
+          }
+          const data = await res.json();
+          _annotations.push(data.annotation);
+          renderAnnotationHighlights();
+          updateAnnotationCount();
+          hideAnnotationToolbar();
+          window.getSelection().removeAllRanges();
+        }
+        // 翻页模式重新计算
+        if (typeof pagerRecalc === 'function' && settings.readingMode === 'pager') {
+          requestAnimationFrame(() => requestAnimationFrame(() => pagerRecalc()));
+        }
+      } catch (err) {
+        alert('保存失败：' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '保存';
+      }
+    });
+
+    // ===== 批注气泡（hover） =====
+    const annotationTooltip = document.getElementById('annotation-tooltip');
+    let _tooltipTimer = null;
+
+    document.addEventListener('mouseover', (e) => {
+      const mark = e.target.closest('.annotation-highlight');
+      if (!mark) return;
+
+      const id = Number(mark.getAttribute('data-annotation-id'));
+      const annotation = _annotations.find(a => a.id === id);
+      if (!annotation) return;
+
+      clearTimeout(_tooltipTimer);
+
+      const textEl = document.getElementById('tooltip-text');
+      const noteEl = document.getElementById('tooltip-note');
+      const metaEl = document.getElementById('tooltip-meta');
+
+      textEl.textContent = '「' + annotation.selected_text.slice(0, 50) + (annotation.selected_text.length > 50 ? '...' : '') + '」';
+      noteEl.textContent = annotation.note || '（无批注内容）';
+      metaEl.textContent = (annotation.username || '') + (annotation.created_at ? ' · ' + annotation.created_at.slice(0, 16).replace('T', ' ') : '');
+
+      if (!annotation.note) {
+        noteEl.style.display = 'none';
+      } else {
+        noteEl.style.display = '';
+      }
+
+      const rect = mark.getBoundingClientRect();
+      annotationTooltip.classList.add('visible');
+
+      const tipH = annotationTooltip.offsetHeight || 60;
+      const tipW = annotationTooltip.offsetWidth || 200;
+      let top = rect.top - tipH - 8;
+      let left = rect.left + (rect.width - tipW) / 2;
+
+      if (top < 8) top = rect.bottom + 8;
+      if (left < 8) left = 8;
+      if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
+
+      annotationTooltip.style.top = top + 'px';
+      annotationTooltip.style.left = left + 'px';
+    });
+
+    document.addEventListener('mouseout', (e) => {
+      const mark = e.target.closest('.annotation-highlight');
+      if (!mark) return;
+      _tooltipTimer = setTimeout(() => {
+        annotationTooltip.classList.remove('visible');
+      }, 200);
+    });
+
+    // ===== 批注侧边面板 =====
+    const annotationPanelOverlay = document.getElementById('annotation-panel-overlay');
+
+    document.getElementById('bar-annotations').addEventListener('click', () => {
+      renderAnnotationPanel();
+      annotationPanelOverlay.classList.add('active');
+    });
+
+    document.getElementById('close-annotation-panel').addEventListener('click', () => {
+      annotationPanelOverlay.classList.remove('active');
+    });
+
+    annotationPanelOverlay.addEventListener('click', (e) => {
+      if (e.target === annotationPanelOverlay) annotationPanelOverlay.classList.remove('active');
+    });
+
+    function renderAnnotationPanel() {
+      const list = document.getElementById('annotation-list');
+      updateAnnotationCount();
+
+      if (_annotations.length === 0) {
+        list.innerHTML = '<div class="panel-empty">暂无批注<br><span style="font-size:12px;margin-top:8px;display:block">选中文本即可添加批注</span></div>';
+        return;
+      }
+
+      // 按段落顺序排列
+      const sorted = [..._annotations].sort((a, b) => a.paragraph_index - b.paragraph_index || a.start_offset - b.start_offset);
+
+      list.innerHTML = sorted.map(a => {
+        const safeId = Number(a.id) || 0;
+        const safeColor = /^#[0-9A-Fa-f]{6}$/.test(a.color) ? a.color : '#FFD700';
+        const safeTime = esc((a.created_at || '').slice(0, 16).replace('T', ' '));
+        return `
+        <div class="panel-item" data-annotation-id="${safeId}">
+          <div class="panel-item-text" style="border-left-color:${safeColor}">「${esc(a.selected_text.slice(0, 100))}${a.selected_text.length > 100 ? '...' : ''}」</div>
+          ${a.note ? `<div class="panel-item-note">${esc(a.note)}</div>` : ''}
+          <div class="panel-item-meta">
+            <span>${esc(a.username || '')} · ${safeTime}</span>
+            <div class="panel-item-actions">
+              <button class="btn-edit-annotation" title="编辑">✏️</button>
+              <button class="btn-delete-annotation" title="删除">🗑️</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // 面板事件委托
+    document.getElementById('annotation-list').addEventListener('click', async (e) => {
+      const item = e.target.closest('.panel-item');
+      if (!item) return;
+      const id = Number(item.getAttribute('data-annotation-id'));
+      const annotation = _annotations.find(a => a.id === id);
+      if (!annotation) return;
+
+      if (e.target.closest('.btn-delete-annotation')) {
+        if (!confirm('确定删除这条批注？')) return;
+        try {
+          const res = await annotationApi('DELETE', '/api/annotations/' + id);
+          if (res && res.ok) {
+            _annotations = _annotations.filter(a => a.id !== id);
+            renderAnnotationHighlights();
+            renderAnnotationPanel();
+            // 翻页模式需要重新计算
+            if (settings.readingMode === 'pager') {
+              requestAnimationFrame(() => requestAnimationFrame(() => pagerRecalc()));
+            }
+          } else {
+            const data = res ? await res.json() : {};
+            alert('删除失败：' + (data.error || '未知错误'));
+          }
+        } catch (err) {
+          alert('删除失败：' + err.message);
+        }
+        return;
+      }
+
+      if (e.target.closest('.btn-edit-annotation')) {
+        const newNote = prompt('编辑批注内容：', annotation.note || '');
+        if (newNote === null) return;
+        try {
+          const res = await annotationApi('PUT', '/api/annotations/' + id, { note: newNote });
+          if (res && res.ok) {
+            annotation.note = newNote;
+            renderAnnotationPanel();
+          } else {
+            const data = res ? await res.json() : {};
+            alert('编辑失败：' + (data.error || '未知错误'));
+          }
+        } catch (err) {
+          alert('编辑失败：' + err.message);
+        }
+        return;
+      }
+
+      // 点击批注项 → 滚动到对应位置
+      const p = document.querySelector(`p[data-p-idx="${annotation.paragraph_index}"]`);
+      if (p) {
+        if (settings.readingMode === 'pager') {
+          // 翻页模式：找到段落所在页
+          const content = document.querySelector('.reader-content');
+          if (content && pagerState.columnWidth > 0) {
+            const pRect = p.getBoundingClientRect();
+            const contentRect = content.getBoundingClientRect();
+            // 先跳到第0页获取基准位置
+            const currentPage = pagerState.currentPage;
+            content.style.transition = 'none';
+            content.style.transform = 'translateX(0)';
+            content.offsetHeight;
+            const pLeft = p.offsetLeft;
+            const page = Math.floor(pLeft / (pagerState.columnWidth * 2));
+            pagerGoTo(Math.min(page, pagerState.totalPages - 1), false);
+          }
+        } else {
+          p.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        // 闪烁高亮
+        const mark = p.querySelector(`.annotation-highlight[data-annotation-id="${id}"]`);
+        if (mark) {
+          mark.style.transition = 'background 0.2s';
+          const origBg = mark.style.background;
+          const flashColor = /^#[0-9A-Fa-f]{6}$/.test(annotation.color) ? annotation.color : '#FFD700';
+          mark.style.background = flashColor + 'AA';
+          setTimeout(() => { mark.style.background = origBg; }, 800);
+        }
+        annotationPanelOverlay.classList.remove('active');
+      }
+    });
+
+    // 点击高亮文本 → 弹出编辑/删除工具栏
+    document.addEventListener('click', (e) => {
+      const mark = e.target.closest('.annotation-highlight');
+      if (!mark) return;
+      // 如果有选区（用户在选择文本），不处理
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+
+      const id = Number(mark.getAttribute('data-annotation-id'));
+      const annotation = _annotations.find(a => a.id === id);
+      if (!annotation) return;
+
+      // 复用工具栏显示编辑界面
+      _pendingSelection = null; // 标记为编辑模式
+      annotationNoteInput.value = annotation.note || '';
+      _selectedColor = annotation.color || '#FFD700';
+      document.querySelectorAll('.toolbar-colors .color-dot').forEach(d => d.classList.toggle('active', d.dataset.color === _selectedColor));
+
+      const rect = mark.getBoundingClientRect();
+      annotationToolbar.classList.add('visible');
+      annotationToolbar.setAttribute('data-edit-id', id);
+
+      const toolbarH = annotationToolbar.offsetHeight || 140;
+      const toolbarW = annotationToolbar.offsetWidth || 240;
+      let top = rect.top - toolbarH - 8;
+      let left = rect.left + (rect.width - toolbarW) / 2;
+      if (top < 8) top = rect.bottom + 8;
+      if (left < 8) left = 8;
+      if (left + toolbarW > window.innerWidth - 8) left = window.innerWidth - toolbarW - 8;
+      annotationToolbar.style.top = top + 'px';
+      annotationToolbar.style.left = left + 'px';
+    });
   </script>
 </body>
 </html>
