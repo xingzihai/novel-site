@@ -114,6 +114,36 @@ async function ensureSchema(env) {
     try {
       await env.DB.prepare("UPDATE books SET status = 'normal' WHERE status IS NULL").run();
     } catch {}
+
+    // ===== 批注系统 v2 =====
+    // 批注主表
+    try {
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS annotations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chapter_id INTEGER NOT NULL,
+        book_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        para_idx INTEGER NOT NULL,
+        sent_idx INTEGER NOT NULL,
+        sent_hash TEXT NOT NULL,
+        sent_text TEXT NOT NULL,
+        content TEXT NOT NULL,
+        visibility TEXT NOT NULL DEFAULT 'public',
+        status TEXT NOT NULL DEFAULT 'normal',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (chapter_id) REFERENCES chapters(id) ON DELETE CASCADE,
+        FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES admin_users(id)
+      )`).run();
+    } catch {}
+    try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_anno_chapter ON annotations(chapter_id, para_idx, sent_idx)').run(); } catch {}
+    try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_anno_book ON annotations(book_id, status)').run(); } catch {}
+    try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_anno_user ON annotations(user_id, created_at)').run(); } catch {}
+    // 书籍批注开关
+    try { await env.DB.prepare('ALTER TABLE books ADD COLUMN annotation_enabled INTEGER NOT NULL DEFAULT 0').run(); } catch {}
+    try { await env.DB.prepare('ALTER TABLE books ADD COLUMN annotation_locked INTEGER NOT NULL DEFAULT 0').run(); } catch {}
+
     // 所有迁移成功完成，标记为已完成
     _schemaEnsured = true;
   } catch (e) {

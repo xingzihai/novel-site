@@ -327,6 +327,12 @@
               <button class="btn btn-sm" id="inline-create-tag-btn">+ 新标签</button>
             </div>
           </div>
+          <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="edit-annotation-enabled" style="width:auto;margin:0">
+              允许读者批注
+            </label>
+          </div>
           <button class="btn" id="save-book-edit-btn">保存</button>
         </div>
       </div>
@@ -1916,11 +1922,18 @@
 
       // 加载标签
       if (_allTags.length === 0) await loadTagList();
+      // 批注开关：先用传入的 book 对象值（🟢-8: 兼容下架/回收站书籍）
+      document.getElementById('edit-annotation-enabled').checked = !!book.annotation_enabled;
+
       // 获取当前书籍标签
       try {
         const res = await fetch(`/api/books/${book.id}`);
         const data = await res.json();
         _editBookTags = (data.book.tags || []).map(t => t.id);
+        // 如果 API 返回了更新的值，覆盖
+        if (data.book.annotation_enabled !== undefined) {
+          document.getElementById('edit-annotation-enabled').checked = !!data.book.annotation_enabled;
+        }
       } catch { _editBookTags = []; }
       renderEditBookTags();
 
@@ -2002,8 +2015,9 @@
       if (!title) return alert('书名不能为空');
 
       try {
-        // 保存基本信息
-        const res = await api('PUT', `/api/admin/books/${_editBookId}`, { title, author, description });
+        // 保存基本信息（含批注开关）
+        const annotationEnabled = document.getElementById('edit-annotation-enabled').checked ? 1 : 0;
+        const res = await api('PUT', `/api/admin/books/${_editBookId}`, { title, author, description, annotation_enabled: annotationEnabled });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 

@@ -34,9 +34,12 @@ export async function onRequestPut(context) {
   const author = (body.author ?? book.author ?? '').trim().slice(0, 100);
   const description = (body.description ?? book.description ?? '').trim().slice(0, 2000);
 
+  // 批注开关：只接受 0 或 1
+  const annotationEnabled = body.annotation_enabled === 1 || body.annotation_enabled === true ? 1 : (body.annotation_enabled === 0 || body.annotation_enabled === false ? 0 : (book.annotation_enabled || 0));
+
   await env.DB.prepare(`
-    UPDATE books SET title = ?, author = ?, description = ?, updated_at = datetime('now') WHERE id = ?
-  `).bind(title, author, description, params.id).run();
+    UPDATE books SET title = ?, author = ?, description = ?, annotation_enabled = ?, updated_at = datetime('now') WHERE id = ?
+  `).bind(title, author, description, annotationEnabled, params.id).run();
 
   return Response.json({ success: true });
 }
@@ -136,6 +139,7 @@ export async function onRequestPost(context) {
       env.DB.prepare('DELETE FROM chapter_stats WHERE chapter_id IN (SELECT id FROM chapters WHERE book_id = ?)').bind(params.id),
       env.DB.prepare('DELETE FROM book_stats WHERE book_id = ?').bind(params.id),
       env.DB.prepare('DELETE FROM book_tags WHERE book_id = ?').bind(params.id),
+      env.DB.prepare('DELETE FROM annotations WHERE book_id = ?').bind(params.id),
       env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(params.id),
       env.DB.prepare('DELETE FROM books WHERE id = ?').bind(params.id),
     ]);

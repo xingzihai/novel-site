@@ -779,3 +779,214 @@ body.immersive .pager-tap-right { bottom: 0; }
 /* 标签在详情页 */
 .book-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .book-tags .tag-pill { cursor: default; }
+
+/* ===== 批注系统 ===== */
+
+/* 段落化渲染 */
+.reader-content p {
+  margin: 0;
+  text-indent: 2em;
+  padding: 2px 0;
+}
+
+/* 批注下划线 */
+.annotated {
+  background-image: linear-gradient(to right, var(--anno-color) 50%, transparent 50%);
+  background-size: 6px 2px;
+  background-repeat: repeat-x;
+  background-position: bottom;
+  padding-bottom: 2px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-radius: 1px;
+}
+.annotated:hover { background-color: var(--anno-color-hover); }
+
+.annotated.private-only {
+  --anno-color: rgba(245, 158, 11, var(--anno-opacity, 0.5));
+  --anno-color-hover: rgba(245, 158, 11, 0.08);
+}
+.annotated.has-public {
+  --anno-color: rgba(59, 130, 246, var(--anno-opacity, 0.5));
+  --anno-color-hover: rgba(59, 130, 246, 0.08);
+}
+.annotated.has-both {
+  --anno-color: rgba(59, 130, 246, var(--anno-opacity, 0.5));
+  --anno-color-hover: rgba(59, 130, 246, 0.08);
+  position: relative;
+}
+.annotated.has-both::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  bottom: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.7);
+}
+
+/* 暗色模式适配 */
+[data-theme="dark"] .annotated.private-only {
+  --anno-color: rgba(212, 168, 67, var(--anno-opacity, 0.5));
+  --anno-color-hover: rgba(212, 168, 67, 0.1);
+}
+[data-theme="dark"] .annotated.has-public,
+[data-theme="dark"] .annotated.has-both {
+  --anno-color: rgba(91, 155, 213, var(--anno-opacity, 0.5));
+  --anno-color-hover: rgba(91, 155, 213, 0.1);
+}
+
+/* 右键菜单 */
+.ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  padding: 4px 0;
+  min-width: 140px;
+}
+.ctx-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s;
+  user-select: none;
+}
+.ctx-item:hover { background: var(--bg, #f5f5f5); }
+
+/* 移动端浮动按钮 */
+.anno-float-btn {
+  position: fixed;
+  z-index: 9999;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent, #6366f1);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 批注编辑器 */
+.anno-editor {
+  position: fixed;
+  z-index: 9998;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  padding: 16px;
+  width: 320px;
+  max-width: 90vw;
+}
+.anno-editor-quote {
+  font-size: 13px;
+  color: var(--text-light, #888);
+  border-left: 3px solid var(--accent, #6366f1);
+  padding: 4px 8px;
+  margin-bottom: 10px;
+  max-height: 60px;
+  overflow: hidden;
+  line-height: 1.5;
+}
+.anno-editor textarea {
+  width: 100%;
+  min-height: 80px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  background: var(--bg, #f9f9f9);
+  color: var(--text, #333);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.anno-editor textarea:focus { border-color: var(--accent, #6366f1); outline: none; }
+.anno-editor-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  gap: 8px;
+}
+.anno-vis-btn {
+  background: none;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 16px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text, #333);
+  white-space: nowrap;
+}
+.anno-vis-btn.public {
+  background: rgba(59, 130, 246, 0.07);
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+.anno-editor-actions { display: flex; gap: 6px; }
+.anno-submit-btn { background: var(--accent, #6366f1) !important; color: #fff !important; }
+
+/* 移动端底部抽屉 */
+@media (max-width: 768px) {
+  .anno-editor {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    width: 100%;
+    max-width: 100vw;
+    border-radius: 16px 16px 0 0;
+    padding: 20px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    box-sizing: border-box;
+  }
+}
+
+/* 批注查看弹窗 */
+.anno-popover {
+  position: fixed;
+  z-index: 9997;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  padding: 12px;
+  max-width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.anno-popover-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #eee);
+}
+.anno-popover-item:last-child { border-bottom: none; }
+.anno-popover-content {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text, #333);
+  margin-bottom: 4px;
+}
+.anno-popover-meta {
+  font-size: 12px;
+  color: var(--text-light, #888);
+}
+.anno-popover-actions { margin-top: 4px; }
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent, #6366f1);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
+}
+.btn-link:hover { opacity: 0.7; }

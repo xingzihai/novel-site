@@ -14,7 +14,7 @@ export async function onRequestGet(context) {
   // 🟡-5: 使用独立查询语句，避免字符串拼接 SQL
   const query = isAdmin
     ? `SELECT b.id, b.title, b.author, b.description, b.cover_key, b.created_at, b.updated_at,
-        b.created_by, b.status, b.delete_at,
+        b.created_by, b.status, b.delete_at, b.annotation_enabled, b.annotation_locked,
         (SELECT COUNT(*) FROM chapters WHERE book_id = b.id) as chapter_count,
         (SELECT COALESCE(SUM(word_count), 0) FROM chapters WHERE book_id = b.id) as total_words
       FROM books b ORDER BY b.updated_at DESC`

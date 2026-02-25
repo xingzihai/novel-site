@@ -10,7 +10,9 @@ export async function onRequestGet(context) {
   }
 
   const book = await env.DB.prepare(
-    `SELECT b.id, b.title, b.author, b.description, b.cover_key, b.status, b.created_at, b.updated_at,
+    `SELECT b.id, b.title, b.author, b.description, b.cover_key, b.status,
+      b.annotation_enabled, b.annotation_locked,
+      b.created_at, b.updated_at,
       u.username as uploader, u.avatar_url as uploader_avatar
     FROM books b LEFT JOIN admin_users u ON b.created_by = u.id
     WHERE b.id = ?`

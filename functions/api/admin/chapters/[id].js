@@ -92,6 +92,7 @@ export async function onRequestDelete(context) {
   }
 
   await env.DB.prepare('DELETE FROM chapter_stats WHERE chapter_id = ?').bind(params.id).run().catch(() => {});
+  await env.DB.prepare('DELETE FROM annotations WHERE chapter_id = ?').bind(params.id).run().catch(() => {});
   await env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(params.id).run();
   await env.R2.delete(chapter.content_key).catch(() => {});
 
