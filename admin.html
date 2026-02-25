@@ -790,9 +790,17 @@
       const bar=document.getElementById('import-bar');
       const status=document.getElementById('import-status');
       document.querySelector('.import-progress').style.display='block';
+      // 获取已有章节的最大sort_order作为基准
+      let baseOrder = 0;
+      try {
+        const bRes = await fetch(`/api/books/${bookId}`);
+        const bData = await bRes.json();
+        const chs = bData.chapters || [];
+        if (chs.length > 0) baseOrder = Math.max(...chs.map(c => c.sort_order || 0));
+      } catch {}
       let uploaded=0,errors=[];
-      const tasks = chapters.map(ch => () =>
-        api('POST','/api/admin/chapters',{book_id:Number(bookId),title:ch.title,content:ch.content})
+      const tasks = chapters.map((ch, idx) => () =>
+        api('POST','/api/admin/chapters',{book_id:Number(bookId),title:ch.title,content:ch.content,sort_order:baseOrder+idx+1})
           .then(async res => {
             if (!res.ok) { const d=await res.json(); errors.push(ch.title+': '+d.error); }
           })
@@ -1919,6 +1927,17 @@
         bookId = Number(bookId);
       }
 
+      // 获取已有章节的最大sort_order作为基准（导入到已有书籍时）
+      let baseOrder = 0;
+      if (mode === 'existing') {
+        try {
+          const bRes = await fetch(`/api/books/${bookId}`);
+          const bData = await bRes.json();
+          const chs = bData.chapters || [];
+          if (chs.length > 0) baseOrder = Math.max(...chs.map(c => c.sort_order || 0));
+        } catch {}
+      }
+
       // 开始导入章节
       const bar = document.getElementById('epub-bar');
       const status = document.getElementById('epub-status');
@@ -1926,8 +1945,8 @@
       bar.style.width = '0%';
       let uploaded = 0, errors = [];
 
-      const tasks = chapters.map(ch => () =>
-        api('POST', '/api/admin/chapters', { book_id: Number(bookId), title: ch.title, content: ch.content })
+      const tasks = chapters.map((ch, idx) => () =>
+        api('POST', '/api/admin/chapters', { book_id: Number(bookId), title: ch.title, content: ch.content, sort_order: baseOrder + idx + 1 })
           .then(async res => {
             if (!res.ok) { const d = await res.json(); errors.push(ch.title + ': ' + d.error); }
           })

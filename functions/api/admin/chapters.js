@@ -16,7 +16,7 @@ export async function onRequestPost(context) {
   const body = await parseJsonBody(request);
   if (!body) return Response.json({ error: 'Invalid JSON' }, { status: 400 });
 
-  const { book_id, title, content } = body;
+  const { book_id, title, content, sort_order: clientSortOrder } = body;
 
   if (!book_id || !validateId(String(book_id))) {
     return Response.json({ error: 'Valid book_id is required' }, { status: 400 });
@@ -51,10 +51,16 @@ export async function onRequestPost(context) {
     if (count >= 200) return Response.json({ error: '演示账号每本书最多 200 章' }, { status: 403 });
   }
 
-  const lastChapter = await env.DB.prepare(
-    'SELECT MAX(sort_order) as max_order FROM chapters WHERE book_id = ?'
-  ).bind(book_id).first();
-  const sortOrder = (lastChapter?.max_order || 0) + 1;
+  // sort_order：前端传了就用前端的（批量导入场景），否则自动递增（单章添加场景）
+  let sortOrder;
+  if (clientSortOrder !== undefined && Number.isInteger(Number(clientSortOrder)) && Number(clientSortOrder) > 0) {
+    sortOrder = Number(clientSortOrder);
+  } else {
+    const lastChapter = await env.DB.prepare(
+      'SELECT MAX(sort_order) as max_order FROM chapters WHERE book_id = ?'
+    ).bind(book_id).first();
+    sortOrder = (lastChapter?.max_order || 0) + 1;
+  }
   const wordCount = content.trim().length;
 
   // 先插入DB拿到chapterId，用占位content_key
