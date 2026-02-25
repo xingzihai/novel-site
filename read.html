@@ -1214,8 +1214,25 @@
       // PC + 移动端统一用 selectionchange + 浮动按钮
       const selHandler = debounceSelection();
       document.addEventListener('selectionchange', selHandler);
-      // PC 补充：mouseup 后也检测选区（部分浏览器 selectionchange 不可靠）
-      readerContent.addEventListener('mouseup', () => setTimeout(selHandler, 50));
+
+      // 阅读区域拦截右键菜单（有选区时阻止浏览器默认菜单）
+      readerContent.addEventListener('contextmenu', (e) => {
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed) e.preventDefault();
+      });
+
+      // mouseup 后：抑制 Chrome 选中文本浮动工具栏 + 触发选区检测
+      readerContent.addEventListener('mouseup', (e) => {
+        setTimeout(() => {
+          const sel = window.getSelection();
+          if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+          // 保存当前选区，collapse 再恢复 — 绕过 Chrome 浮动工具栏
+          const range = sel.getRangeAt(0).cloneRange();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          selHandler();
+        }, 10);
+      });
 
       // 浮动按钮点击
       document.getElementById('anno-float-btn').addEventListener('click', openAnnotationEditor);
