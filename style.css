@@ -837,26 +837,6 @@ body.immersive .pager-tap-right { bottom: 0; }
   --anno-color-hover: rgba(91, 155, 213, 0.1);
 }
 
-/* 右键菜单 */
-.ctx-menu {
-  position: fixed;
-  z-index: 9999;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border, #ddd);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  padding: 4px 0;
-  min-width: 140px;
-}
-.ctx-item {
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.15s;
-  user-select: none;
-}
-.ctx-item:hover { background: var(--bg, #f5f5f5); }
-
 /* 移动端浮动按钮 */
 .anno-float-btn {
   position: fixed;

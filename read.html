@@ -108,12 +108,7 @@
   <div class="pager-indicator" id="pager-indicator"></div>
   <div class="immersive-hint" id="immersive-hint">点击中央或按 Esc 退出沉浸模式</div>
 
-  <!-- 批注：右键菜单 -->
-  <div id="ctx-menu" class="ctx-menu" style="display:none">
-    <div class="ctx-item" id="ctx-annotate">📝 添加批注</div>
-  </div>
-
-  <!-- 批注：移动端浮动按钮 -->
+  <!-- 批注：浮动按钮（PC+移动端统一） -->
   <div id="anno-float-btn" class="anno-float-btn" style="display:none">📝</div>
 
   <!-- 批注：输入框 -->
@@ -1216,14 +1211,13 @@
       const readerContent = document.querySelector('.reader-content');
       if (!readerContent) return;
 
-      // PC 右键菜单
-      readerContent.addEventListener('contextmenu', handleContextMenu);
+      // PC + 移动端统一用 selectionchange + 浮动按钮
+      const selHandler = debounceSelection();
+      document.addEventListener('selectionchange', selHandler);
+      // PC 补充：mouseup 后也检测选区（部分浏览器 selectionchange 不可靠）
+      readerContent.addEventListener('mouseup', () => setTimeout(selHandler, 50));
 
-      // 移动端 selectionchange
-      document.addEventListener('selectionchange', debounceSelection());
-
-      // 菜单项点击
-      document.getElementById('ctx-annotate').addEventListener('click', openAnnotationEditor);
+      // 浮动按钮点击
       document.getElementById('anno-float-btn').addEventListener('click', openAnnotationEditor);
 
       // 编辑器按钮
@@ -1231,69 +1225,33 @@
       document.getElementById('anno-cancel').addEventListener('click', closeAnnotationEditor);
       document.getElementById('anno-submit').addEventListener('click', submitAnnotation);
 
-      // 点击外部关闭菜单/弹窗
+      // 点击外部关闭弹窗
       document.addEventListener('click', (e) => {
-        const ctxMenu = document.getElementById('ctx-menu');
-        if (ctxMenu.style.display !== 'none' && !ctxMenu.contains(e.target)) {
-          ctxMenu.style.display = 'none';
-        }
         const popover = document.getElementById('anno-popover');
         if (popover.style.display !== 'none' && !popover.contains(e.target) && !e.target.closest('.annotated')) {
           popover.style.display = 'none';
+        }
+        // 点击非浮动按钮且非选区时隐藏浮动按钮
+        const floatBtn = document.getElementById('anno-float-btn');
+        if (floatBtn.style.display !== 'none' && !floatBtn.contains(e.target)) {
+          const sel = window.getSelection();
+          if (!sel || sel.isCollapsed) floatBtn.style.display = 'none';
         }
       });
 
       // Escape 关闭
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-          document.getElementById('ctx-menu').style.display = 'none';
           document.getElementById('anno-float-btn').style.display = 'none';
           document.getElementById('anno-popover').style.display = 'none';
           if (annoState.editing) closeAnnotationEditor();
         }
       });
 
-      // 滚动时关闭菜单
+      // 滚动时关闭浮动按钮
       window.addEventListener('scroll', () => {
-        document.getElementById('ctx-menu').style.display = 'none';
         document.getElementById('anno-float-btn').style.display = 'none';
       }, { passive: true });
-    }
-
-    function handleContextMenu(e) {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) return; // 无选区，走默认右键
-
-      const anchorEl = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
-      const p = anchorEl?.closest('p[data-para-idx]');
-      if (!p) return;
-
-      e.preventDefault();
-
-      const paraIdx = parseInt(p.dataset.paraIdx);
-      const paraText = p.textContent;
-
-      // 计算选区在段落内的偏移
-      const range = sel.getRangeAt(0);
-      const preRange = document.createRange();
-      preRange.setStart(p, 0);
-      preRange.setEnd(range.startContainer, range.startOffset);
-      const selStart = preRange.toString().length;
-      const selEnd = selStart + sel.toString().length;
-
-      const snapped = snapToSentence(paraText, selStart, selEnd);
-      if (!snapped) return;
-
-      annoState.paraIdx = paraIdx;
-      annoState.sentIdx = snapped.sentIdx;
-      annoState.sentText = snapped.text;
-
-      // 高亮吸附的句子
-      sel.removeAllRanges();
-      const snapRange = findTextInParagraph(p, snapped.text, snapped.sentIdx);
-      if (snapRange) sel.addRange(snapRange);
-
-      showContextMenu(e.clientX, e.clientY);
     }
 
     function debounceSelection() {
@@ -1338,20 +1296,8 @@
       };
     }
 
-    function showContextMenu(x, y) {
-      const menu = document.getElementById('ctx-menu');
-      menu.style.display = 'block';
-      menu.style.left = x + 'px';
-      menu.style.top = y + 'px';
-      // 边界检测
-      const rect = menu.getBoundingClientRect();
-      if (rect.right > window.innerWidth) menu.style.left = (x - rect.width) + 'px';
-      if (rect.bottom > window.innerHeight) menu.style.top = (y - rect.height) + 'px';
-    }
-
     // --- 批注编辑器 ---
     async function openAnnotationEditor() {
-      document.getElementById('ctx-menu').style.display = 'none';
       document.getElementById('anno-float-btn').style.display = 'none';
 
       annoState.editing = true;
