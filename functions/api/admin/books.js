@@ -35,8 +35,8 @@ export async function onRequestPost(context) {
     INSERT INTO books (title, description, author, created_by) VALUES (?, ?, ?, ?)
   `).bind(
     title.trim(),
-    (description || '').trim().slice(0, 2000),
-    (author || '').trim().slice(0, 100),
+    (typeof description === 'string' ? description : '').trim().slice(0, 2000),
+    (typeof author === 'string' ? author : '').trim().slice(0, 100),
     auth.userId
   ).run();
 

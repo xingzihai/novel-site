@@ -535,9 +535,6 @@
       // super_admin专属功能
       const saEls = document.querySelectorAll('.super-admin-only');
       saEls.forEach(el => el.style.display = role === 'super_admin' ? '' : 'none');
-      // demo限制：隐藏EPUB导入和删除书籍
-      const demoHideEls = document.querySelectorAll('.hide-for-demo');
-      demoHideEls.forEach(el => el.style.display = role === 'demo' ? 'none' : '');
       // demo用户显示注销按钮
       const deactivateBtn = document.getElementById('deactivate-account-btn');
       if (deactivateBtn) deactivateBtn.style.display = role === 'demo' ? '' : 'none';
@@ -799,20 +796,23 @@
         if (chs.length > 0) baseOrder = Math.max(...chs.map(c => c.sort_order || 0));
       } catch {}
       let uploaded=0,errors=[];
-      const tasks = chapters.map((ch, idx) => () =>
-        api('POST','/api/admin/chapters',{book_id:Number(bookId),title:ch.title,content:ch.content,sort_order:baseOrder+idx+1})
-          .then(async res => {
-            if (!res.ok) { const d=await res.json(); errors.push(ch.title+': '+d.error); }
-          })
-          .catch(e => { errors.push(ch.title+': '+e.message); })
-          .finally(() => {
-            uploaded++;
-            const pct=Math.round(uploaded/chapters.length*100);
-            bar.style.width=pct+'%';
-            status.textContent=`${uploaded}/${chapters.length} 章（${pct}%）`;
-          })
-      );
-      await concurrentUpload(tasks, 3);
+      const tasks = chapters.map((ch, idx) => async () => {
+        let lastErr;
+        for (let retry = 0; retry < 3; retry++) {
+          try {
+            const res = await api('POST','/api/admin/chapters',{book_id:Number(bookId),title:ch.title,content:ch.content,sort_order:baseOrder+idx+1});
+            if (res.ok) return;
+            const d = await res.json();
+            if (res.status >= 400 && res.status < 500) { errors.push(ch.title+': '+d.error); return; }
+            lastErr = d.error;
+          } catch(e) { lastErr = e.message; }
+          if (retry < 2) await new Promise(r => setTimeout(r, 1000 * (retry + 1)));
+        }
+        errors.push(ch.title+': '+lastErr);
+      });
+      // 进度追踪包装
+      const tracked = tasks.map(fn => async () => { try { await fn(); } finally { uploaded++; const pct=Math.round(uploaded/chapters.length*100); bar.style.width=pct+'%'; status.textContent=`${uploaded}/${chapters.length} 章（${pct}%）`; } });
+      await concurrentUpload(tracked, 3);
       if (errors.length>0) {
         showMsg('import-msg',`导入完成，${errors.length} 章失败：${errors.slice(0,3).join('；')}`,'error');
       } else { showMsg('import-msg',`成功导入 ${uploaded} 章`,'success'); }
@@ -1124,7 +1124,7 @@
       async function worker() {
         while (idx < tasks.length) {
           const i = idx++;
-          results[i] = await tasks[i]();
+          try { results[i] = await tasks[i](); } catch (e) { results[i] = e; }
         }
       }
       await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
@@ -1489,6 +1489,16 @@
         // 1. 读取 container.xml 找到 OPF 路径
         const containerXml = await zip.file('META-INF/container.xml')?.async('text');
         if (!containerXml) throw new Error('无效的 EPUB 文件：缺少 META-INF/container.xml');
+
+        // 🟢-3: DRM 加密检测
+        const encryptionXml = await zip.file('META-INF/encryption.xml')?.async('text');
+        if (encryptionXml) {
+          const encDoc = new DOMParser().parseFromString(encryptionXml, 'application/xml');
+          if (encDoc.querySelectorAll('EncryptedData').length > 0) {
+            throw new Error('此 EPUB 文件包含 DRM 加密，无法导入。请使用未加密的 EPUB 文件。');
+          }
+        }
+
         const containerDoc = new DOMParser().parseFromString(containerXml, 'application/xml');
         const rootfileEl = containerDoc.querySelector('rootfile[full-path]');
         if (!rootfileEl) throw new Error('无效的 EPUB 文件：找不到 OPF 路径');
@@ -1500,16 +1510,15 @@
         if (!opfXml) throw new Error('无效的 EPUB 文件：找不到 OPF 文件 ' + opfPath);
         const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
 
-        // 提取 metadata
-        const getMeta = (tag) => {
-          // 尝试带命名空间和不带命名空间
-          const el = opfDoc.querySelector('metadata ' + tag)
-            || opfDoc.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', tag.replace('dc\\:', ''))[0];
+        // 提取 metadata（🟡-5 修复：优先用 getElementsByTagNameNS，避免 CSS 选择器命名空间问题）
+        const getMeta = (localName) => {
+          const el = opfDoc.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', localName)[0]
+            || opfDoc.querySelector('metadata ' + localName);
           return el ? el.textContent.trim() : '';
         };
-        const bookTitle = getMeta('dc\\:title') || getMeta('title') || file.name.replace(/\.epub$/i, '');
-        const bookAuthor = getMeta('dc\\:creator') || getMeta('creator') || '';
-        const bookDesc = getMeta('dc\\:description') || getMeta('description') || '';
+        const bookTitle = getMeta('title') || file.name.replace(/\.epub$/i, '');
+        const bookAuthor = getMeta('creator') || '';
+        const bookDesc = getMeta('description') || '';
 
         // 构建 manifest 映射: id -> href
         const manifest = {};
@@ -1531,28 +1540,31 @@
         // 3. 按 spine 顺序读取章节
         const chapters = [];
         let totalExtracted = 0;
-        const MAX_EXTRACTED = 100 * 1024 * 1024; // 100MB
+        const MAX_EXTRACTED = 50 * 1024 * 1024; // 50MB（字节数，非字符数）
         for (const idref of spineRefs) {
           const item = manifest[idref];
           if (!item) continue;
           // 只处理 XHTML/HTML 类型
           if (!item.mediaType.includes('html') && !item.mediaType.includes('xml')) continue;
 
-          const filePath = opfDir + item.href;
-          const content = await zip.file(filePath)?.async('text');
+          // 🔴-2 修复：尝试原始路径、解码路径、编码路径（兼容中文文件名EPUB）
+          // 🟡-6 修复：规范化路径，移除 ../ 防止路径遍历
+          const normalizePath = (p) => p.split('/').reduce((acc, part) => {
+            if (part === '..') acc.pop(); else if (part !== '.' && part !== '') acc.push(part); return acc;
+          }, []).join('/');
+          const rawPath = normalizePath(opfDir + item.href);
+          let zipEntry = zip.file(rawPath);
+          if (!zipEntry) { try { zipEntry = zip.file(decodeURIComponent(rawPath)); } catch {} }
+          if (!zipEntry) { try { zipEntry = zip.file(opfDir + encodeURI(item.href)); } catch {} }
+          const content = await zipEntry?.async('text');
           if (!content) continue;
 
-          // zip bomb 防护：累计解压大小检查
-          totalExtracted += content.length;
-          if (totalExtracted > MAX_EXTRACTED) throw new Error('EPUB 解压后内容过大（超过100MB），可能是异常文件');
+          // 🔴-4 修复：zip bomb 防护用字节数而非字符数
+          totalExtracted += new TextEncoder().encode(content).byteLength;
+          if (totalExtracted > MAX_EXTRACTED) throw new Error('EPUB 解压后内容过大（超过50MB），可能是异常文件');
 
-          // 用 DOMParser 解析 HTML，只取纯文本
-          const htmlDoc = new DOMParser().parseFromString(content, 'application/xhtml+xml');
-          // 如果解析出错，尝试 text/html
-          let docToUse = htmlDoc;
-          if (htmlDoc.querySelector('parsererror')) {
-            docToUse = new DOMParser().parseFromString(content, 'text/html');
-          }
+          // 🟡-1 修复：直接用 text/html 解析（更宽容，纯文本提取不需要XHTML严格性）
+          const docToUse = new DOMParser().parseFromString(content, 'text/html');
 
           // 提取章节标题：优先 h1 > h2 > h3 > title > 文件名
           let title = '';
@@ -1589,7 +1601,10 @@
                   lastWasBlock = false;
                 }
               } else if (node.nodeType === Node.ELEMENT_NODE) {
-                if (blockTags.has(node.tagName)) {
+                // 🟢-2: BR 特殊处理，始终插入换行（允许连续 BR 产生空行）
+                if (node.tagName === 'BR') {
+                  parts.push('\n');
+                } else if (blockTags.has(node.tagName)) {
                   if (!lastWasBlock && parts.length > 0) {
                     parts.push('\n');
                     lastWasBlock = true;
@@ -1607,9 +1622,10 @@
           if (!textContent.replace(/\s/g, '')) continue;
 
           // 大章节二次分割：单个XHTML内容过长时，尝试用章节正则拆分
+          // 🟡-2 修复：要求至少分出3个子章节才采用，避免误匹配导致标题错乱
           if (textContent.length > 20000) {
             const subChapters = splitChapters(textContent);
-            if (subChapters && subChapters.length > 1) {
+            if (subChapters && subChapters.length >= 3) {
               for (const sc of subChapters) {
                 if (sc.content && sc.content.trim()) {
                   chapters.push({ title: sc.title, content: sc.content, checked: true });
@@ -1945,20 +1961,22 @@
       bar.style.width = '0%';
       let uploaded = 0, errors = [];
 
-      const tasks = chapters.map((ch, idx) => () =>
-        api('POST', '/api/admin/chapters', { book_id: Number(bookId), title: ch.title, content: ch.content, sort_order: baseOrder + idx + 1 })
-          .then(async res => {
-            if (!res.ok) { const d = await res.json(); errors.push(ch.title + ': ' + d.error); }
-          })
-          .catch(e => { errors.push(ch.title + ': ' + e.message); })
-          .finally(() => {
-            uploaded++;
-            const pct = Math.round(uploaded / chapters.length * 100);
-            bar.style.width = pct + '%';
-            status.textContent = `${uploaded}/${chapters.length} 章（${pct}%）`;
-          })
-      );
-      await concurrentUpload(tasks, 3);
+      const tasks = chapters.map((ch, idx) => async () => {
+        let lastErr;
+        for (let retry = 0; retry < 3; retry++) {
+          try {
+            const res = await api('POST', '/api/admin/chapters', { book_id: Number(bookId), title: ch.title, content: ch.content, sort_order: baseOrder + idx + 1 });
+            if (res.ok) return;
+            const d = await res.json();
+            if (res.status >= 400 && res.status < 500) { errors.push(ch.title + ': ' + d.error); return; }
+            lastErr = d.error;
+          } catch (e) { lastErr = e.message; }
+          if (retry < 2) await new Promise(r => setTimeout(r, 1000 * (retry + 1)));
+        }
+        errors.push(ch.title + ': ' + lastErr);
+      });
+      const tracked = tasks.map(fn => async () => { try { await fn(); } finally { uploaded++; const pct = Math.round(uploaded / chapters.length * 100); bar.style.width = pct + '%'; status.textContent = `${uploaded}/${chapters.length} 章（${pct}%）`; } });
+      await concurrentUpload(tracked, 3);
 
       if (errors.length > 0) {
         // 如果是新建书且全部章节都失败，自动删除空书
