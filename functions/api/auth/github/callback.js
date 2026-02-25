@@ -144,14 +144,16 @@ export async function onRequestGet(context) {
   ).bind(ghUser.id).first();
 
   if (!user) {
-    // 防滥用：限制 demo 用户总数
+    // 防滥用：限制 demo 用户总数（从设置读取，默认100）
+    const demoLimitRow = await env.DB.prepare("SELECT value FROM site_settings WHERE key = 'demo_user_limit'").first();
+    const demoLimit = demoLimitRow ? Number(demoLimitRow.value) : 100;
     const { count } = await env.DB.prepare(
       "SELECT COUNT(*) as count FROM admin_users WHERE role = 'demo' AND github_id IS NOT NULL"
     ).first();
-    if (count >= 100) {
+    if (count >= demoLimit) {
       return new Response(null, {
         status: 302,
-        headers: { 'Location': '/admin.html#github_error=' + encodeURIComponent('Demo 注册名额已满') }
+        headers: { 'Location': '/admin.html#github_error=' + encodeURIComponent('Demo 注册名额已满（上限 ' + demoLimit + '）') }
       });
     }
 

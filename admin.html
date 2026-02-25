@@ -157,6 +157,11 @@
               <label>Client Secret <span id="gh-secret-status" style="font-size:12px"></span></label>
               <input type="password" id="gh-client-secret" placeholder="留空则保持原值不变" maxlength="200">
             </div>
+            <div class="form-group">
+              <label>Demo 用户注册上限</label>
+              <input type="number" id="gh-demo-limit" placeholder="100" min="0" max="10000" value="100" style="width:120px">
+              <div style="font-size:12px;color:var(--text-light);margin-top:2px">通过 GitHub 注册的演示用户最大数量，设为 0 则禁止新注册</div>
+            </div>
             <button class="btn" onclick="saveGitHubConfig()">保存 GitHub 配置</button>
             <div id="gh-config-msg" style="margin-top:8px"></div>
           </div>
@@ -664,6 +669,7 @@
         if (!res.ok) return;
         document.getElementById('gh-oauth-enabled').checked = data.enabled;
         document.getElementById('gh-client-id').value = data.clientId || '';
+        document.getElementById('gh-demo-limit').value = data.demoLimit ?? 100;
         document.getElementById('gh-secret-status').textContent = data.hasSecret ? '（已配置 ✅）' : '（未配置）';
         toggleGitHubConfig();
       } catch {}
@@ -673,6 +679,7 @@
       const enabled = document.getElementById('gh-oauth-enabled').checked;
       const clientId = document.getElementById('gh-client-id').value.trim();
       const clientSecret = document.getElementById('gh-client-secret').value.trim();
+      const demoLimit = Number(document.getElementById('gh-demo-limit').value) || 0;
 
       if (enabled && !clientId) {
         return showMsg('gh-config-msg', '请填写 Client ID', 'error');
@@ -680,7 +687,7 @@
 
       try {
         const res = await api('POST', '/api/admin/settings?section=github', {
-          enabled, clientId, clientSecret: clientSecret || undefined
+          enabled, clientId, clientSecret: clientSecret || undefined, demoLimit
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);

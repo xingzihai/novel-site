@@ -52,10 +52,12 @@ export async function onRequestGet(context) {
     const enabled = await env.DB.prepare("SELECT value FROM site_settings WHERE key = 'github_oauth_enabled'").first();
     const clientId = await env.DB.prepare("SELECT value FROM site_settings WHERE key = 'github_client_id'").first();
     const hasSecret = await env.DB.prepare("SELECT value FROM site_settings WHERE key = 'github_client_secret'").first();
+    const demoLimitRow = await env.DB.prepare("SELECT value FROM site_settings WHERE key = 'demo_user_limit'").first();
     return Response.json({
       enabled: enabled?.value === 'true',
       clientId: clientId?.value || '',
-      hasSecret: !!hasSecret?.value,  // 不返回 secret 明文，只告知是否已配置
+      hasSecret: !!hasSecret?.value,
+      demoLimit: demoLimitRow ? Number(demoLimitRow.value) : 100,
     });
   }
 
@@ -74,7 +76,7 @@ export async function onRequestPost(context) {
   const url = new URL(request.url);
   // POST /api/admin/settings?section=github
   if (url.searchParams.get('section') === 'github') {
-    const { enabled, clientId, clientSecret } = body;
+    const { enabled, clientId, clientSecret, demoLimit } = body;
 
     // 保存启用状态
     await env.DB.prepare("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('github_oauth_enabled', ?)")
@@ -91,6 +93,13 @@ export async function onRequestPost(context) {
     if (clientSecret && clientSecret.trim()) {
       await env.DB.prepare("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('github_client_secret', ?)")
         .bind(clientSecret.trim().slice(0, 200)).run();
+    }
+
+    // 保存 Demo 用户上限
+    if (demoLimit !== undefined) {
+      const limit = Math.max(0, Math.min(10000, Math.floor(Number(demoLimit) || 0)));
+      await env.DB.prepare("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('demo_user_limit', ?)")
+        .bind(String(limit)).run();
     }
 
     return Response.json({ success: true });
