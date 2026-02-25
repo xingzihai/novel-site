@@ -98,6 +98,10 @@ async function ensureSchema(env) {
     try {
       await env.DB.prepare('ALTER TABLE chapters ADD COLUMN version INTEGER DEFAULT 0').run();
     } catch {}
+    // 章节排序唯一约束（防重试导致重复章节）
+    try {
+      await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_chapters_book_sort ON chapters(book_id, sort_order)').run();
+    } catch {}
     // 所有迁移成功完成，标记为已完成
     _schemaEnsured = true;
   } catch (e) {

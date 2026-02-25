@@ -1,9 +1,15 @@
 // GET /api/books — 获取所有书籍列表（含标签）
+import { checkAdmin } from './_utils.js';
+
 export async function onRequestGet(context) {
   const { request, env } = context;
 
-  // 管理员请求（带token）返回 created_by 用于前端 ownership 判断
-  const isAdmin = request.headers.get('Authorization')?.startsWith('Bearer ');
+  // 验证 token 有效性，而非仅检查 header 存在（防止伪造 header 获取 created_by）
+  let isAdmin = false;
+  if (request.headers.get('Authorization')?.startsWith('Bearer ')) {
+    const auth = await checkAdmin(request, env);
+    isAdmin = auth.ok;
+  }
 
   // 始终查询 created_by，在非管理员响应中过滤掉
   const { results } = await env.DB.prepare(`

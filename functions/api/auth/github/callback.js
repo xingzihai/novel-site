@@ -185,6 +185,7 @@ export async function onRequestGet(context) {
     headers: {
       'Location': `/admin.html#github_token=${session.token}`,
       'Set-Cookie': clearCookie,
+      'Referrer-Policy': 'no-referrer',
     }
   });
 }

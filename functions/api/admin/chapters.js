@@ -53,7 +53,7 @@ export async function onRequestPost(context) {
 
   // sort_order：前端传了就用前端的（批量导入场景），否则自动递增（单章添加场景）
   let sortOrder;
-  if (clientSortOrder !== undefined && Number.isInteger(Number(clientSortOrder)) && Number(clientSortOrder) > 0) {
+  if (clientSortOrder !== undefined && Number.isInteger(Number(clientSortOrder)) && Number(clientSortOrder) > 0 && Number(clientSortOrder) <= 2147483647) {
     sortOrder = Number(clientSortOrder);
   } else {
     const lastChapter = await env.DB.prepare(
@@ -72,6 +72,9 @@ export async function onRequestPost(context) {
     `).bind(book_id, title.trim(), sortOrder, wordCount, 'pending').run();
     chapterId = result.meta.last_row_id;
   } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) {
+      return Response.json({ success: true, duplicate: true, message: '章节已存在（重复请求）' });
+    }
     return Response.json({ error: 'Failed to create chapter' }, { status: 500 });
   }
 

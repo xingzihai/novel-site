@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理后台</title>
   <link rel="stylesheet" href="/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+  <script src="/jszip.min.js"></script>
 </head>
 <body>
   <div class="navbar">
@@ -1483,6 +1483,7 @@
       showMsg('epub-msg', '', '');
 
       try {
+        if (typeof JSZip === 'undefined') throw new Error('JSZip 库加载失败，请刷新页面重试');
         const arrayBuffer = await file.arrayBuffer();
         const zip = await JSZip.loadAsync(arrayBuffer);
 

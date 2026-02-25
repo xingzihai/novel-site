@@ -33,9 +33,9 @@ export async function onRequestPut(context) {
 
   const { title, content, version } = body;
 
-  // 乐观锁：章节已有version时，必须携带version字段
+  // 乐观锁：编辑内容时必须携带version字段
   const currentVersion = chapter.version || 0;
-  if (content && currentVersion > 0 && version === undefined) {
+  if (content && version === undefined) {
     return Response.json({ error: '请提供 version 字段以防止并发冲突' }, { status: 400 });
   }
   if (version !== undefined && Number(version) !== currentVersion) {
