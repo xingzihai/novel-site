@@ -1516,7 +1516,23 @@
         const getMeta = (localName) => {
           const el = opfDoc.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', localName)[0]
             || opfDoc.querySelector('metadata ' + localName);
-          return el ? el.textContent.trim() : '';
+          if (!el) return '';
+          // description 可能含 HTML 标签，提取纯文本但保留段落换行
+          const raw = el.innerHTML || el.textContent || '';
+          if (/<[a-z][\s\S]*>/i.test(raw)) {
+            const tmp = new DOMParser().parseFromString('<body>' + raw + '</body>', 'text/html').body;
+            const blocks = tmp.querySelectorAll('p, div, br, li');
+            if (blocks.length > 0) {
+              const parts = [];
+              tmp.querySelectorAll('p, div, li').forEach(b => {
+                const t = b.textContent.trim();
+                if (t) parts.push(t);
+              });
+              return parts.join('\n').trim();
+            }
+            return tmp.textContent.trim();
+          }
+          return el.textContent.trim();
         };
         const bookTitle = getMeta('title') || file.name.replace(/\.epub$/i, '');
         const bookAuthor = getMeta('creator') || '';
