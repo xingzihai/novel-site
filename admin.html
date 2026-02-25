@@ -1720,9 +1720,14 @@
       const container = document.getElementById(containerId);
       if (!container) return;
       if (_allTags.length === 0) {
-        container.innerHTML = '<span style="font-size:13px;color:var(--text-light)">暂无标签</span>';
+        container.innerHTML = '';
+        // 隐藏父级 form-group
+        const parent = container.closest('.form-group');
+        if (parent) parent.style.display = 'none';
         return;
       }
+      const parent = container.closest('.form-group');
+      if (parent) parent.style.display = '';
       container.innerHTML = _allTags.map(t => {
         const checked = selectedIds.includes(t.id);
         return `<label data-tag-id="${t.id}" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;padding:4px 10px;border:1px solid ${checked ? t.color : 'var(--border)'};border-radius:12px;font-size:13px;background:${checked ? t.color + '22' : 'transparent'};color:${checked ? t.color : 'var(--text-light)'};transition:all .15s;user-select:none">
