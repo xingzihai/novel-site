@@ -83,7 +83,6 @@ async function purgeExpiredBooks(env) {
 
       // 🟡-2: 先删 DB（原子），再删 R2（失败不影响一致性）
       await env.DB.batch([
-        env.DB.prepare('DELETE FROM annotations WHERE chapter_id IN (SELECT id FROM chapters WHERE book_id = ?)').bind(book.id),
         env.DB.prepare('DELETE FROM chapter_stats WHERE chapter_id IN (SELECT id FROM chapters WHERE book_id = ?)').bind(book.id),
         env.DB.prepare('DELETE FROM book_stats WHERE book_id = ?').bind(book.id),
         env.DB.prepare('DELETE FROM book_tags WHERE book_id = ?').bind(book.id),

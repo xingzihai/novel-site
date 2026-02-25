@@ -114,31 +114,6 @@ async function ensureSchema(env) {
     try {
       await env.DB.prepare("UPDATE books SET status = 'normal' WHERE status IS NULL").run();
     } catch {}
-    // 批注表
-    try {
-      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS annotations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        chapter_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        paragraph_index INTEGER NOT NULL,
-        start_offset INTEGER NOT NULL,
-        end_offset INTEGER NOT NULL,
-        selected_text TEXT NOT NULL,
-        note TEXT DEFAULT '',
-        color TEXT DEFAULT '#FFD700',
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )`).run();
-    } catch {}
-    try {
-      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_annotations_chapter ON annotations(chapter_id)').run();
-    } catch {}
-    try {
-      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_annotations_user ON annotations(user_id)').run();
-    } catch {}
-    try {
-      await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_annotations_unique ON annotations(chapter_id, user_id, paragraph_index, start_offset, end_offset)').run();
-    } catch {}
     // 所有迁移成功完成，标记为已完成
     _schemaEnsured = true;
   } catch (e) {

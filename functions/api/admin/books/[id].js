@@ -133,7 +133,6 @@ export async function onRequestPost(context) {
     if (book.cover_key) r2Keys.push(book.cover_key);
 
     await env.DB.batch([
-      env.DB.prepare('DELETE FROM annotations WHERE chapter_id IN (SELECT id FROM chapters WHERE book_id = ?)').bind(params.id),
       env.DB.prepare('DELETE FROM chapter_stats WHERE chapter_id IN (SELECT id FROM chapters WHERE book_id = ?)').bind(params.id),
       env.DB.prepare('DELETE FROM book_stats WHERE book_id = ?').bind(params.id),
       env.DB.prepare('DELETE FROM book_tags WHERE book_id = ?').bind(params.id),
