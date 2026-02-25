@@ -87,7 +87,7 @@
                 <div class="book-info">
                   <h2>${esc(b.title)}</h2>
                   ${b.author ? `<div class="author">作者：${esc(b.author)}</div>` : ''}
-                  ${b.description ? `<div class="desc">${esc(b.description)}</div>` : ''}
+                  ${b.description ? `<div class="desc">${cleanDesc(b.description)}</div>` : ''}
                   ${tagsBlock}
                 </div>
               </div>
@@ -98,7 +98,7 @@
             <div class="book-header">
               <h2>${esc(b.title)}</h2>
               ${b.author ? `<div class="author">作者：${esc(b.author)}</div>` : ''}
-              ${b.description ? `<div class="desc">${esc(b.description)}</div>` : ''}
+              ${b.description ? `<div class="desc">${cleanDesc(b.description)}</div>` : ''}
               ${tagsBlock}
             </div>
           `;
@@ -146,6 +146,14 @@
       }
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+    function cleanDesc(s) {
+      if (!s) return '';
+      if (!/<[a-z][\s\S]*>/i.test(s)) return esc(s);
+      const doc = new DOMParser().parseFromString('<body>' + s + '</body>', 'text/html').body;
+      const parts = [];
+      doc.querySelectorAll('p, div, li').forEach(b => { const t = b.textContent.trim(); if (t) parts.push(esc(t)); });
+      return parts.length > 0 ? parts.join('<br>') : esc(doc.textContent.trim());
+    }
 
     function getBookmarks(bookId) {
       try { return JSON.parse(localStorage.getItem(`bookmarks_${bookId}`)) || []; }
