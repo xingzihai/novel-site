@@ -847,12 +847,14 @@ body.immersive .pager-tap-right { bottom: 0; }
   border-radius: 50%;
   background: var(--accent, #6366f1);
   color: #fff;
-  display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   cursor: pointer;
+  user-select: none;
+}
+.anno-float-btn.visible { display: flex; }
   user-select: none;
 }
 

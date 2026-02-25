@@ -109,7 +109,7 @@
   <div class="immersive-hint" id="immersive-hint">点击中央或按 Esc 退出沉浸模式</div>
 
   <!-- 批注：浮动按钮（PC+移动端统一） -->
-  <div id="anno-float-btn" class="anno-float-btn" style="display:none">📝</div>
+  <div id="anno-float-btn" class="anno-float-btn">📝</div>
 
   <!-- 批注：输入框 -->
   <div id="anno-editor" class="anno-editor" style="display:none">
@@ -1236,10 +1236,13 @@
         }, 10);
       });
 
-      // 浮动按钮：mousedown 阻止默认行为（防止清除选区）+ click 打开编辑器
+      // 浮动按钮：mousedown 直接触发编辑器（比 click 更可靠）
       const floatBtn = document.getElementById('anno-float-btn');
-      floatBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
-      floatBtn.addEventListener('click', (e) => { e.stopPropagation(); openAnnotationEditor(); });
+      floatBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openAnnotationEditor();
+      });
 
       // 编辑器按钮
       document.getElementById('anno-vis-btn').addEventListener('click', toggleVisibility);
@@ -1254,16 +1257,16 @@
         }
         // 点击非浮动按钮且非选区时隐藏浮动按钮
         const floatBtn = document.getElementById('anno-float-btn');
-        if (floatBtn.style.display !== 'none' && !floatBtn.contains(e.target)) {
+        if (floatBtn.classList.contains('visible') && !floatBtn.contains(e.target)) {
           const sel = window.getSelection();
-          if (!sel || sel.isCollapsed) floatBtn.style.display = 'none';
+          if (!sel || sel.isCollapsed) floatBtn.classList.remove('visible');
         }
       });
 
       // Escape 关闭
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-          document.getElementById('anno-float-btn').style.display = 'none';
+          document.getElementById('anno-float-btn').classList.remove('visible');
           document.getElementById('anno-popover').style.display = 'none';
           if (annoState.editing) closeAnnotationEditor();
         }
@@ -1271,7 +1274,7 @@
 
       // 滚动时关闭浮动按钮
       window.addEventListener('scroll', () => {
-        document.getElementById('anno-float-btn').style.display = 'none';
+        document.getElementById('anno-float-btn').classList.remove('visible');
       }, { passive: true });
     }
 
@@ -1282,7 +1285,7 @@
         timer = setTimeout(() => {
           const sel = window.getSelection();
           if (!sel || sel.isCollapsed || annoState.editing) {
-            document.getElementById('anno-float-btn').style.display = 'none';
+            document.getElementById('anno-float-btn').classList.remove('visible');
             return;
           }
           const anchorEl = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
@@ -1310,7 +1313,7 @@
 
           const rect = range.getBoundingClientRect();
           const btn = document.getElementById('anno-float-btn');
-          btn.style.display = 'flex';
+          btn.classList.add('visible');
           btn.style.left = (rect.left + rect.width / 2 - 18) + 'px';
           btn.style.top = (rect.top - 44) + 'px';
         }, 300);
@@ -1319,7 +1322,7 @@
 
     // --- 批注编辑器 ---
     async function openAnnotationEditor() {
-      document.getElementById('anno-float-btn').style.display = 'none';
+      document.getElementById('anno-float-btn').classList.remove('visible');
 
       annoState.editing = true;
       annoState.sentHash = await sentenceHash(annoState.sentText);
