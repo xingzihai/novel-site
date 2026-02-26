@@ -10,8 +10,8 @@
 
 - 💰 **零成本** — 完全运行在 Cloudflare 免费套餐上，不需要服务器、域名、CDN
 - ⚡ **5 分钟部署** — 克隆仓库后几条命令即可上线
-- 📖 **功能完整** — 书架、阅读、搜索、书签、统计、TXT/EPUB 导入、GitHub OAuth、多管理员、标签分类、PWA 离线
-- 🔐 **安全加固** — 三轮 Opus 级安全审计，31 项修复，PBKDF2 + CSRF 防护 + 乐观锁 + 文件魔数验证
+- 📖 **功能完整** — 书架、阅读、搜索、书签、统计、批注互动、举报治理、TXT/EPUB 导入、GitHub OAuth、多管理员、标签分类、PWA 离线
+- 🔐 **安全加固** — 五轮 Opus 级安全审计，评分 9.0/10，PBKDF2 + HttpOnly Cookie + CSRF 防护 + 乐观锁 + 文件魔数验证
 - 🛠️ **纯原生** — 零框架依赖（无 React/Vue），纯 HTML/CSS/JS，改起来简单
 
 ## 🌐 在线演示
@@ -54,8 +54,24 @@
 - 🔑 GitHub OAuth 登录：一键注册 demo 账号（站内配置 Client ID/Secret）
 - 🚪 Demo 自助注销：注销后内容自动转交超管保管
 
+**批注系统**
+- 💬 选中文字发表批注（公开/私有），浮动按钮触发
+- 📝 批注编辑器：实时字数统计（500字上限）、Ctrl+Enter 发表、Esc 取消
+- 📖 下划线渲染：有批注的句子显示彩色下划线，透明度随批注数递增
+- ❤️ 点赞/取消点赞，最新/最热排序，长文折叠
+- 🔒 禁言/封禁用户自动限制操作
+- ⚡ 速率限制：每用户每分钟 10 条，同一句子最多 3 条
+
+**举报与治理**
+- 🚩 所有人可举报（含游客），Bigram Jaccard 相似度去重
+- ⚖️ 社区投票机制：达到阈值后管理员/社区投票决定移除或保留
+- 📊 积分系统：处理举报 +0.2、未处理 -1.0、投票贡献 +0.1
+- 🔇 禁言递进：警告 → 1天 → 3天 → 7天 → 30天 → 永久封禁
+- 🛡️ 角色保护：非超管不可处理超管批注
+
 **安全与架构**
 - 🔐 PBKDF2 密码哈希（100K 迭代 + 随机盐）+ 旧格式自动迁移
+- 🍪 HttpOnly Cookie 认证（Secure + SameSite=Lax）+ Bearer fallback
 - 🎫 Session Token 哈希存储 + 7 天过期 + 单用户最多 10 个会话
 - 🛡️ CSRF 防护：管理 API 强制 Content-Type 检查
 - 🔒 IP + 用户名双维度登录限流（5 次失败锁 10 分钟）
@@ -151,6 +167,7 @@ novel-site/
 ├── book.html               # 书籍详情（章节列表 + 书签）
 ├── read.html               # 阅读页面（滚动/翻页 + 沉浸模式）
 ├── admin.html              # 管理后台（统计 + EPUB导入 + 用户管理）
+├── annotation-admin.html   # 批注管理（批注列表 + 举报管理 + 统计）
 ├── 404.html                # 404 页面
 ├── style.css               # 全局样式（5 主题 + 响应式）
 ├── sw.js                   # Service Worker（PWA 离线缓存）
@@ -165,14 +182,19 @@ novel-site/
     ├── _middleware.js       # 公共中间件（安全头、CORS、CSRF、限流）
     └── api/
         ├── _utils.js       # 工具函数（认证、密码哈希、权限、OAuth）
-        ├── auth.js         # 认证（登录/登出/改密码/GitHub OAuth入口）
+        ├── auth.js         # 认证（登录/改密码/GitHub OAuth入口）
+        ├── me.js           # 当前用户信息
         ├── books.js        # 书籍列表（公开）
         ├── search.js       # 搜索（IP 速率限制）
         ├── settings.js     # 站点设置（公开，白名单过滤）
         ├── fonts.js        # 自定义字体列表
         ├── tags.js         # 标签列表
-        ├── auth/github/
-        │   └── callback.js # GitHub OAuth 回调（state验证+用户创建）
+        ├── annotations.js  # 批注（GET 列表 + POST 创建）
+        ├── reports.js      # 举报提交（游客+登录用户）
+        ├── auth/
+        │   ├── github/
+        │   │   └── callback.js # GitHub OAuth 回调
+        │   └── logout.js  # 登出（清除 Cookie + Session）
         ├── books/
         │   └── [id].js     # 书籍详情 + 章节列表 + 标签
         ├── chapters/
@@ -181,6 +203,11 @@ novel-site/
         │   └── [id].js     # 封面图 serve
         ├── fonts/
         │   └── [name].js   # 字体文件 serve
+        ├── annotations/
+        │   ├── summary.js  # 章节批注聚合统计（渲染下划线）
+        │   ├── [id].js     # 删除自己的批注
+        │   └── [id]/
+        │       └── like.js # 点赞/取消点赞
         └── admin/          # 管理 API（需登录）
             ├── account.js  # Demo 用户自助注销
             ├── books.js    # 创建书籍（含配额检查）
@@ -194,9 +221,18 @@ novel-site/
             ├── books/
             │   └── [id].js # 编辑/删除书籍（含所有权检查）
             ├── chapters.js # 创建章节（含配额+R2回滚）
-            └── chapters/
-                ├── [id].js # 编辑/删除章节（乐观锁+R2回滚）
-                └── swap.js # 章节排序（batch原子操作）
+            ├── chapters/
+            │   ├── [id].js # 编辑/删除章节（乐观锁+R2回滚+批注警告）
+            │   └── swap.js # 章节排序（batch原子操作）
+            ├── annotations.js    # 批注管理列表（权限过滤）
+            ├── annotations/
+            │   ├── [id].js       # 移除/恢复/永久删除批注
+            │   ├── batch.js      # 批量操作（最多100条）
+            │   └── stats.js      # 批注统计
+            ├── reports.js        # 举报列表（权限过滤）
+            ├── reports/
+            │   └── [id].js       # 处理举报（移除/保留+自动处罚）
+            └── votes.js          # 社区投票
 ```
 
 > `functions/` 目录是 Pages Functions 的约定——文件路径即 URL 路由。`functions/api/books.js` → `/api/books`，`functions/api/books/[id].js` → `/api/books/123`。以 `_` 开头的文件不会成为路由。
@@ -214,6 +250,12 @@ novel-site/
 | `tags` / `book_tags` | 标签系统 |
 | `site_settings` | 站点配置 + GitHub OAuth配置 |
 | `auth_attempts` | 登录限流（IP哈希 + 失败计数） |
+| `annotations` | 批注（章节定位 + 内容 + 可见性 + 状态） |
+| `annotation_likes` | 批注点赞（用户唯一约束） |
+| `reports` | 举报记录（举报人 + 理由 + 状态 + 阈值检测） |
+| `votes` | 社区投票（每人每批注一票） |
+| `score_logs` | 积分变动日志 |
+| `mutes` | 禁言/封锁/封禁记录 |
 | `site_visits` / `daily_visitors` | 站点 PV/UV 统计 |
 | `book_stats` / `chapter_stats` | 阅读量统计 |
 
@@ -228,7 +270,7 @@ novel-site/
 
 ### 安全设计
 
-本项目经过三轮 Opus 级安全审计（抗攻击 / 内容安全 / 账号安全），共修复 31 项问题。
+本项目经过五轮 Opus 级安全审计（抗攻击 / 内容安全 / 账号安全 / 批注安全 / 全链路模拟攻击），评分 9.0/10。
 
 **中间件（`_middleware.js`）**
 
@@ -247,8 +289,12 @@ novel-site/
 | 密码哈希 | PBKDF2-SHA256，100K 迭代，16 字节盐，恒定时间比较 |
 | 登录限流 | IP + 用户名双维度，5 次失败锁 10 分钟，fail-closed |
 | Session | 32 字节随机 token，DB 存 SHA-256 哈希，7 天过期 |
+| Cookie 认证 | HttpOnly + Secure + SameSite=Lax，Bearer header 作为 fallback |
 | 三级权限 | super_admin > admin > demo，所有 API 后端校验 |
-| 所有权检查 | demo 只能操作自己创建的书籍/章节/封面 |
+| 所有权检查 | demo 只能操作自己创建的书籍/章节/封面/批注 |
+| 批注限流 | 每用户每分钟 10 条，同一句子最多 3 条 |
+| 举报限流 | 登录用户 20 次/小时，游客 3 次/小时（IP 限流） |
+| 禁言/封禁 | 封禁用户不可发批注/点赞/举报，禁言用户不可发公开批注 |
 | GitHub OAuth | HMAC 签名 state + cookie 绑定 + DB 一次性消费 + 10 分钟过期 |
 
 **数据一致性**
