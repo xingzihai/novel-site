@@ -24,6 +24,8 @@ export async function onRequestDelete(context) {
     return Response.json({ error: '只能删除自己的批注' }, { status: 403 });
   }
 
+  // 先清理关联点赞记录
+  await env.DB.prepare('DELETE FROM annotation_likes WHERE annotation_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM annotations WHERE id = ?').bind(id).run();
 
   return Response.json({ ok: true });

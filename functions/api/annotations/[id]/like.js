@@ -15,10 +15,15 @@ export async function onRequestPost(context) {
   }
 
   // 检查批注是否存在
-  const anno = await env.DB.prepare('SELECT id FROM annotations WHERE id = ? AND status = ?')
+  const anno = await env.DB.prepare('SELECT id, user_id FROM annotations WHERE id = ? AND status = ?')
     .bind(annoId, 'normal').first();
   if (!anno) {
     return Response.json({ error: '批注不存在' }, { status: 404 });
+  }
+
+  // 不能给自己的批注点赞
+  if (anno.user_id === auth.userId) {
+    return Response.json({ error: '不能给自己的批注点赞' }, { status: 403 });
   }
 
   // 检查是否已点赞

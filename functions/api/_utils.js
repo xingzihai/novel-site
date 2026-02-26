@@ -425,7 +425,7 @@ export async function ensureAnnotationSchema(env) {
       sent_hash TEXT NOT NULL,
       sent_text TEXT NOT NULL,
       content TEXT NOT NULL,
-      visibility TEXT NOT NULL DEFAULT 'public',
+      visibility TEXT NOT NULL DEFAULT 'private',
       status TEXT NOT NULL DEFAULT 'normal',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -434,6 +434,15 @@ export async function ensureAnnotationSchema(env) {
       FOREIGN KEY (user_id) REFERENCES admin_users(id)
     )`).run();
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_anno_chapter ON annotations(chapter_id, para_idx, sent_idx)').run();
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS annotation_likes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      annotation_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(annotation_id, user_id),
+      FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES admin_users(id)
+    )`).run();
     _annoSchemaEnsured = true;
   } catch (e) {
     console.error('ensureAnnotationSchema failed:', e);

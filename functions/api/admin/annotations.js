@@ -42,15 +42,20 @@ export async function onRequestGet(context) {
   // 构建查询条件
   const { where, binds } = buildPermissionFilter(auth);
   
+  const VALID_STATUSES = ['normal', 'reported', 'removed'];
+  const VALID_VISIBILITIES = ['public', 'private'];
+
   if (bookId) {
     where.push('a.book_id = ?');
     binds.push(bookId);
   }
   if (status && status !== 'all') {
+    if (!VALID_STATUSES.includes(status)) return Response.json({ error: '无效的状态' }, { status: 400 });
     where.push('a.status = ?');
     binds.push(status);
   }
   if (visibility && visibility !== 'all') {
+    if (!VALID_VISIBILITIES.includes(visibility)) return Response.json({ error: '无效的类型' }, { status: 400 });
     where.push('a.visibility = ?');
     binds.push(visibility);
   }
