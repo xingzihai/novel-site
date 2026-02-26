@@ -106,6 +106,37 @@
     
     /* 加载状态 */
     .loading-state { text-align: center; padding: 40px; color: var(--text-light); }
+    
+    /* Tab 切换 */
+    .tab-bar { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--border); }
+    .tab-btn {
+      padding: 10px 20px; border: none; background: none; cursor: pointer;
+      font-size: 14px; color: var(--text-light); border-bottom: 2px solid transparent;
+      margin-bottom: -2px; transition: all 0.2s;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+    .tab-btn:hover { color: var(--text); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    
+    /* 举报项 */
+    .report-item {
+      background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px; margin-bottom: 12px;
+    }
+    .report-item .report-reason {
+      font-size: 13px; color: var(--text); background: #fef2f2; padding: 8px 12px;
+      border-radius: var(--radius); margin: 8px 0; border-left: 3px solid #dc2626;
+    }
+    .report-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .report-actions button {
+      padding: 6px 14px; border-radius: var(--radius); font-size: 12px; cursor: pointer; border: 1px solid var(--border);
+      background: var(--card-bg); color: var(--text);
+    }
+    .report-actions button.btn-remove { border-color: #dc2626; color: #dc2626; }
+    .report-actions button.btn-remove:hover { background: #dc2626; color: #fff; }
+    .report-actions button.btn-keep { border-color: #16a34a; color: #16a34a; }
+    .report-actions button.btn-keep:hover { background: #16a34a; color: #fff; }
   </style>
 </head>
 <body>
@@ -134,6 +165,12 @@
       </div>
     </div>
     
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="annotations">📝 批注列表</button>
+      <button class="tab-btn" data-tab="reports">⚠️ 举报管理</button>
+    </div>
+    
+    <div class="tab-panel active" id="panel-annotations">
     <div class="filter-row">
       <select id="filter-book">
         <option value="">全部书籍</option>
@@ -169,6 +206,27 @@
       <span class="page-info"><span id="page-current">1</span> / <span id="page-total">1</span></span>
       <button id="btn-next">下一页</button>
     </div>
+    </div><!-- end panel-annotations -->
+    
+    <div class="tab-panel" id="panel-reports">
+      <div class="filter-row">
+        <select id="report-filter-status">
+          <option value="">全部状态</option>
+          <option value="pending">待处理</option>
+          <option value="escalated">社区投票中</option>
+          <option value="resolved">已处理</option>
+        </select>
+        <select id="report-filter-book">
+          <option value="">全部书籍</option>
+        </select>
+      </div>
+      <div id="report-list"><div class="loading-state">加载中...</div></div>
+      <div class="pagination" id="report-pagination" style="display:none">
+        <button id="report-btn-prev">上一页</button>
+        <span class="page-info"><span id="report-page-current">1</span> / <span id="report-page-total">1</span></span>
+        <button id="report-btn-next">下一页</button>
+      </div>
+    </div><!-- end panel-reports -->
   </div>
 
   <script>
@@ -452,11 +510,133 @@
       updateBatchBar();
     });
 
+    // Tab 切换
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'reports' && !reportsLoaded) {
+          loadReports();
+          reportsLoaded = true;
+        }
+      });
+    });
+
+    // --- 举报管理 ---
+    let reportPage = 1;
+    let reportTotalPages = 1;
+    let reportsLoaded = false;
+
+    async function loadReports() {
+      const status = document.getElementById('report-filter-status').value;
+      const bookId = document.getElementById('report-filter-book').value;
+      const params = new URLSearchParams({ page: reportPage, limit: 20 });
+      if (status) params.set('status', status);
+      if (bookId) params.set('bookId', bookId);
+
+      const list = document.getElementById('report-list');
+      list.innerHTML = '<div class="loading-state">加载中...</div>';
+
+      const res = await api('GET', `/api/admin/reports?${params}`);
+      if (!res.ok) { list.innerHTML = '<div class="empty-state">加载失败</div>'; return; }
+
+      const data = await res.json();
+      const reports = data.reports || [];
+      reportTotalPages = data.pagination?.totalPages || 1;
+
+      if (reports.length === 0) {
+        list.innerHTML = '<div class="empty-state">暂无举报</div>';
+        document.getElementById('report-pagination').style.display = 'none';
+        return;
+      }
+
+      list.innerHTML = reports.map(r => renderReportItem(r)).join('');
+      document.getElementById('report-pagination').style.display = 'flex';
+      document.getElementById('report-page-current').textContent = reportPage;
+      document.getElementById('report-page-total').textContent = reportTotalPages;
+      document.getElementById('report-btn-prev').disabled = reportPage <= 1;
+      document.getElementById('report-btn-next').disabled = reportPage >= reportTotalPages;
+      bindReportEvents();
+    }
+
+    function renderReportItem(r) {
+      const statusMap = {
+        'pending': '<span class="badge badge-reported">待处理</span>',
+        'escalated': '<span class="badge" style="background:#fef3c7;color:#92400e">投票中</span>',
+        'resolved': '<span class="badge" style="background:#dcfce7;color:#15803d">已处理</span>'
+      };
+      const roleBadge = r.anno_user_role === 'super_admin' ? '<span class="badge badge-super">超管</span>' :
+                        r.anno_user_role === 'admin' ? '<span class="badge badge-admin">管理</span>' :
+                        r.anno_user_role === 'demo' ? '<span class="badge badge-demo">demo</span>' : '';
+      const isPending = r.status === 'pending' || r.status === 'escalated';
+
+      return `
+        <div class="report-item" data-id="${r.id}">
+          <div class="anno-quote">${escHtml(r.sent_text || '')}</div>
+          <div class="anno-content">${escHtml(r.anno_content || '')}</div>
+          <div class="anno-meta">
+            <span>批注作者: ${escHtml(r.anno_username || '未知')}</span> ${roleBadge}
+            <span>📖 ${escHtml(r.book_title || '')} / ${escHtml(r.chapter_title || '')}</span>
+            ${statusMap[r.status] || ''}
+            <span>举报数: ${r.report_count || 1}</span>
+          </div>
+          <div class="report-reason">举报理由: ${escHtml(r.reason)}</div>
+          <div class="anno-meta">
+            <span>举报人: ${escHtml(r.reporter_username || '游客')}</span>
+            <span>🕐 ${timeAgo(r.created_at)}</span>
+            ${r.handler_action ? `<span>处理结果: ${r.handler_action === 'remove' ? '移除' : '保留'}</span>` : ''}
+          </div>
+          ${isPending ? `
+          <div class="report-actions">
+            <button class="btn-remove" data-id="${r.id}">移除批注</button>
+            <button class="btn-keep" data-id="${r.id}">保留批注</button>
+          </div>` : ''}
+        </div>
+      `;
+    }
+
+    function bindReportEvents() {
+      document.querySelectorAll('.report-actions .btn-remove').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('确定移除该批注？')) return;
+          const res = await api('PATCH', `/api/admin/reports/${btn.dataset.id}`, { action: 'remove' });
+          if (res.ok) { loadReports(); loadStats(); }
+          else alert('操作失败');
+        });
+      });
+      document.querySelectorAll('.report-actions .btn-keep').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('确定保留该批注？')) return;
+          const res = await api('PATCH', `/api/admin/reports/${btn.dataset.id}`, { action: 'keep' });
+          if (res.ok) { loadReports(); loadStats(); }
+          else alert('操作失败');
+        });
+      });
+    }
+
+    // 举报筛选
+    ['report-filter-status', 'report-filter-book'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => { reportPage = 1; loadReports(); });
+    });
+    document.getElementById('report-btn-prev').addEventListener('click', () => {
+      if (reportPage > 1) { reportPage--; loadReports(); }
+    });
+    document.getElementById('report-btn-next').addEventListener('click', () => {
+      if (reportPage < reportTotalPages) { reportPage++; loadReports(); }
+    });
+
     // 初始化
     (async () => {
       await fetchMe();
       await Promise.all([loadStats(), loadBooks()]);
       await loadAnnotations();
+      // 复制书籍选项到举报筛选
+      const reportBookSelect = document.getElementById('report-filter-book');
+      document.querySelectorAll('#filter-book option').forEach(opt => {
+        if (opt.value) reportBookSelect.appendChild(opt.cloneNode(true));
+      });
     })();
   </script>
 </body>

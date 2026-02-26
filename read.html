@@ -1197,7 +1197,7 @@
                     <span class="like-icon">${liked ? '❤️' : '🤍'}</span>
                     <span class="like-count">${likeCount || ''}</span>
                   </button>
-                  ${a.is_mine ? `<button class="btn-link anno-delete-btn" data-id="${a.id}">删除</button>` : ''}
+                  ${a.is_mine ? `<button class="btn-link anno-delete-btn" data-id="${a.id}">删除</button>` : `<button class="btn-link anno-report-btn" data-id="${a.id}">举报</button>`}
                 </div>
               </div>
             </div>
@@ -1238,6 +1238,9 @@
         });
         popover.querySelectorAll('.anno-delete-btn').forEach(btn => {
           btn.onclick = () => deleteAnnotation(Number(btn.dataset.id));
+        });
+        popover.querySelectorAll('.anno-report-btn').forEach(btn => {
+          btn.onclick = () => showReportDialog(Number(btn.dataset.id));
         });
       } catch {}
     }
@@ -1288,6 +1291,31 @@
           await refreshAnnotations();
         } else {
           alert('删除失败');
+        }
+      } catch {
+        alert('网络错误');
+      }
+    }
+
+    function showReportDialog(annoId) {
+      const reason = prompt('请输入举报理由（至少10个字）：');
+      if (!reason) return;
+      if (reason.trim().length < 10) {
+        alert('举报理由至少10个字');
+        return;
+      }
+      submitReport(annoId, reason.trim());
+    }
+
+    async function submitReport(annoId, reason) {
+      try {
+        const res = await annoApi('POST', '/api/reports', { annotationId: annoId, reason });
+        if (res.ok) {
+          alert('举报已提交，感谢反馈');
+          document.getElementById('anno-popover').style.display = 'none';
+        } else {
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || '举报失败');
         }
       } catch {
         alert('网络错误');

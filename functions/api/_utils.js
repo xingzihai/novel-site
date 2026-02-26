@@ -415,6 +415,7 @@ let _annoSchemaEnsured = false;
 export async function ensureAnnotationSchema(env) {
   if (_annoSchemaEnsured) return;
   try {
+    // Phase 1: annotations + likes
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS annotations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       chapter_id INTEGER NOT NULL,
@@ -443,6 +444,85 @@ export async function ensureAnnotationSchema(env) {
       FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES admin_users(id)
     )`).run();
+
+    // Phase 3: reports + votes + score_logs + mutes
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      annotation_id INTEGER NOT NULL,
+      book_id INTEGER NOT NULL,
+      reporter_id INTEGER,
+      reporter_guest_hash TEXT,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      handler_id INTEGER,
+      handler_action TEXT,
+      threshold_reached_at TEXT,
+      escalated_at TEXT,
+      handled_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE,
+      FOREIGN KEY (reporter_id) REFERENCES admin_users(id)
+    )`).run();
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_reports_annotation ON reports(annotation_id, status)').run();
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_reports_book ON reports(book_id, status)').run();
+
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      annotation_id INTEGER NOT NULL,
+      admin_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(annotation_id, admin_id),
+      FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE,
+      FOREIGN KEY (admin_id) REFERENCES admin_users(id)
+    )`).run();
+
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS score_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      delta REAL NOT NULL,
+      reason TEXT NOT NULL,
+      related_annotation_id INTEGER,
+      related_report_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES admin_users(id)
+    )`).run();
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_score_user ON score_logs(user_id, created_at)').run();
+
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mutes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      related_annotation_id INTEGER,
+      duration_minutes INTEGER,
+      starts_at TEXT NOT NULL DEFAULT (datetime('now')),
+      ends_at TEXT,
+      lifted_by INTEGER,
+      lifted_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES admin_users(id)
+    )`).run();
+
+    // admin_users 新字段 (ALTER TABLE 忽略已存在的列错误)
+    const alterCols = [
+      'score REAL NOT NULL DEFAULT 0',
+      'violation_count INTEGER NOT NULL DEFAULT 0',
+      'last_violation_at TEXT',
+      'consecutive_neglect_count INTEGER NOT NULL DEFAULT 0',
+      'lock_count INTEGER NOT NULL DEFAULT 0',
+      'locked_until TEXT',
+      'banned_at TEXT',
+      'appeal_count INTEGER NOT NULL DEFAULT 0',
+      'muted_until TEXT'
+    ];
+    for (const col of alterCols) {
+      try {
+        await env.DB.prepare(`ALTER TABLE admin_users ADD COLUMN ${col}`).run();
+      } catch (_) { /* column already exists */ }
+    }
+
     _annoSchemaEnsured = true;
   } catch (e) {
     console.error('ensureAnnotationSchema failed:', e);
