@@ -6,10 +6,8 @@ export async function onRequestGet(context) {
 
   // 验证 token 有效性，而非仅检查 header 存在（防止伪造 header 获取 created_by）
   let isAdmin = false;
-  if (request.headers.get('Authorization')?.startsWith('Bearer ')) {
-    const auth = await checkAdmin(request, env);
-    isAdmin = auth.ok;
-  }
+  const auth = await checkAdmin(request, env);
+  isAdmin = auth.ok;
 
   // 🟡-5: 使用独立查询语句，避免字符串拼接 SQL
   const query = isAdmin
@@ -86,6 +84,10 @@ async function purgeExpiredBooks(env) {
         env.DB.prepare('DELETE FROM chapter_stats WHERE chapter_id IN (SELECT id FROM chapters WHERE book_id = ?)').bind(book.id),
         env.DB.prepare('DELETE FROM book_stats WHERE book_id = ?').bind(book.id),
         env.DB.prepare('DELETE FROM book_tags WHERE book_id = ?').bind(book.id),
+        env.DB.prepare('DELETE FROM votes WHERE annotation_id IN (SELECT id FROM annotations WHERE book_id = ?)').bind(book.id),
+        env.DB.prepare('DELETE FROM reports WHERE book_id = ?').bind(book.id),
+        env.DB.prepare('DELETE FROM annotation_likes WHERE annotation_id IN (SELECT id FROM annotations WHERE book_id = ?)').bind(book.id),
+        env.DB.prepare('DELETE FROM annotations WHERE book_id = ?').bind(book.id),
         env.DB.prepare('DELETE FROM chapters WHERE book_id = ?').bind(book.id),
         env.DB.prepare('DELETE FROM books WHERE id = ?').bind(book.id),
       ]);

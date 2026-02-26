@@ -65,7 +65,7 @@
             'demo': { label: '用户', cls: 'demo' }
           };
           const r = roleMap[user.role] || { label: '用户', cls: 'demo' };
-          adminLink.innerHTML = `<span class="role-badge ${r.cls}">${r.label}</span> ${user.username || ''} <a href="#" onclick="doLogout();return false" style="font-size:12px;color:#e74c3c;margin-left:6px">退出</a>`;
+          adminLink.innerHTML = `<span class="role-badge ${r.cls}">${r.label}</span> ${esc(user.username || '')} <a href="#" onclick="doLogout();return false" style="font-size:12px;color:#e74c3c;margin-left:6px">退出</a>`;
         }
       } catch {}
     })();

@@ -58,7 +58,7 @@ export async function onRequestPost(context) {
   // 游客用 IP hash
   let guestHash = null;
   if (!reporterId) {
-    const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
+    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
     guestHash = [...new Uint8Array(buf)].slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
   }
