@@ -75,8 +75,14 @@ export async function onRequestGet(context) {
   `;
   const listResult = await env.DB.prepare(listSql).bind(...binds, limit, offset).all();
 
+  // demo 用户隐藏举报人信息（防报复）
+  let reports = listResult.results;
+  if (auth.role === 'demo') {
+    reports = reports.map(r => ({ ...r, reporter_username: '匿名', reporter_id: null }));
+  }
+
   return Response.json({
-    reports: listResult.results,
+    reports,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
   });
 }

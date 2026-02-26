@@ -14,6 +14,12 @@ export async function onRequestPost(context) {
     return Response.json({ error: '请先登录' }, { status: 401 });
   }
 
+  // 检查封禁状态
+  const userStatus = await env.DB.prepare('SELECT banned_at FROM admin_users WHERE id = ?').bind(auth.userId).first();
+  if (userStatus?.banned_at) {
+    return Response.json({ error: '账号已被封禁' }, { status: 403 });
+  }
+
   // 检查批注是否存在
   const anno = await env.DB.prepare('SELECT id, user_id FROM annotations WHERE id = ? AND status = ?')
     .bind(annoId, 'normal').first();

@@ -95,6 +95,14 @@ export async function onRequestPost(context) {
     if (cnt && cnt.cnt >= 2) {
       return Response.json({ error: '您已对此批注举报过2次' }, { status: 400 });
     }
+    // 登录用户：每小时最多20次举报
+    const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+    const hourCnt = await env.DB.prepare(
+      'SELECT COUNT(*) as cnt FROM reports WHERE reporter_id = ? AND created_at > ?'
+    ).bind(reporterId, oneHourAgo).first();
+    if (hourCnt && hourCnt.cnt >= 20) {
+      return Response.json({ error: '操作过于频繁，请稍后再试' }, { status: 429 });
+    }
   } else {
     // 游客：同IP每批注最多2次
     const cnt = await env.DB.prepare(

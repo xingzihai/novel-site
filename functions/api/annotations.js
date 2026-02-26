@@ -11,6 +11,12 @@ export async function onRequestPost(context) {
 
   await ensureAnnotationSchema(env);
 
+  // 检查禁言/封禁状态
+  const userStatus = await env.DB.prepare('SELECT muted_until, banned_at FROM admin_users WHERE id = ?').bind(auth.userId).first();
+  if (userStatus?.banned_at) {
+    return Response.json({ error: '账号已被封禁' }, { status: 403 });
+  }
+
   let body;
   try {
     body = await request.json();
@@ -19,6 +25,11 @@ export async function onRequestPost(context) {
   }
 
   const { chapterId, bookId, paraIdx, sentIdx, sentHash, sentText, content, visibility } = body;
+
+  // 禁言期间不可发布公开批注
+  if (visibility === 'public' && userStatus?.muted_until && new Date(userStatus.muted_until) > new Date()) {
+    return Response.json({ error: '禁言期间不可发布公开批注' }, { status: 403 });
+  }
 
   // 参数校验
   if (!chapterId || !bookId || paraIdx == null || sentIdx == null || !sentHash || !sentText || !content) {

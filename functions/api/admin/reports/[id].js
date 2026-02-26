@@ -86,6 +86,14 @@ export async function onRequestPatch(context) {
     return Response.json({ error: '无权处理此举报' }, { status: 403 });
   }
 
+  // 角色保护：非超管不能处理超管批注的举报
+  if (auth.role !== 'super_admin') {
+    const annoUser = await env.DB.prepare('SELECT role FROM admin_users WHERE id = ?').bind(report.anno_user_id).first();
+    if (annoUser?.role === 'super_admin') {
+      return Response.json({ error: '无权处理此举报' }, { status: 403 });
+    }
+  }
+
   // 执行操作
   if (action === 'remove') {
     // 移除批注
