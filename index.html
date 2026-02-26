@@ -55,10 +55,8 @@
     // 用户状态：登录后替换"管理"为角色+用户名
     (async function renderUserStatus() {
       const adminLink = document.getElementById('nav-admin');
-      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-      if (!token) return; // 未登录保持"管理"
       try {
-        const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
+        const res = await fetch('/api/me', { credentials: 'same-origin' });
         if (res.ok) {
           const user = await res.json();
           const roleMap = {
@@ -67,10 +65,15 @@
             'demo': { label: '用户', cls: 'demo' }
           };
           const r = roleMap[user.role] || { label: '用户', cls: 'demo' };
-          adminLink.innerHTML = `<span class="role-badge ${r.cls}">${r.label}</span> ${user.username || ''}`;
+          adminLink.innerHTML = `<span class="role-badge ${r.cls}">${r.label}</span> ${user.username || ''} <a href="#" onclick="doLogout();return false" style="font-size:12px;color:#e74c3c;margin-left:6px">退出</a>`;
         }
       } catch {}
     })();
+
+    async function doLogout() {
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+      location.reload();
+    }
 
     // 继续阅读
     function renderContinueReading() {

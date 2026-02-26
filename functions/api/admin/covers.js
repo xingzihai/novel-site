@@ -43,6 +43,10 @@ export async function onRequestPost(context) {
   // 先写新封面到R2，再更新DB，DB失败则清理R2
   try {
     await env.R2.put(key, file.stream(), { httpMetadata: { contentType: ct } });
+  } catch (err) {
+    return Response.json({ error: 'Failed to upload cover' }, { status: 500 });
+  }
+  try {
     await env.DB.prepare('UPDATE books SET cover_key = ? WHERE id = ?').bind(key, bookId).run();
   } catch (err) {
     // DB更新失败时清理已上传的新封面

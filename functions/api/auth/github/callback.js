@@ -1,5 +1,5 @@
 // GET /api/auth/github/callback — GitHub OAuth 回调
-import { hmacVerify, sha256Hash, createSession, getGitHubClientSecret } from '../../_utils.js';
+import { hmacVerify, sha256Hash, createSession, getGitHubClientSecret, makeAuthCookie } from '../../_utils.js';
 
 export async function onRequestGet(context) {
   const { request, env } = context;
@@ -180,14 +180,15 @@ export async function onRequestGet(context) {
   // 6. 创建 session token（复用现有机制）
   const session = await createSession(env, user.id);
 
-  // 7. 重定向回前端，token 通过 URL hash 传递（hash 不会发送到服务器）
+  // 7. 重定向回前端，token 通过 HttpOnly Cookie 传递
   const clearCookie = '__Host-github_oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
   return new Response(null, {
     status: 302,
-    headers: {
-      'Location': `/admin.html#github_token=${session.token}`,
-      'Set-Cookie': clearCookie,
-      'Referrer-Policy': 'no-referrer',
-    }
+    headers: [
+      ['Location', '/admin.html#github_login=success'],
+      ['Set-Cookie', clearCookie],
+      ['Set-Cookie', makeAuthCookie(session.token)],
+      ['Referrer-Policy', 'no-referrer'],
+    ]
   });
 }

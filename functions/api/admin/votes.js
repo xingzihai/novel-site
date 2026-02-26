@@ -94,7 +94,7 @@ export async function onRequestPost(context) {
         ).bind(annotationId).all();
         for (const v of (voters.results || [])) {
           await env.DB.prepare(
-            "UPDATE admin_users SET score = MIN(100, score + 0.1) WHERE id = ?"
+            "UPDATE admin_users SET score = ROUND(MIN(100, ROUND(score, 1) + 0.1), 1) WHERE id = ?"
           ).bind(v.admin_id).run();
           await env.DB.prepare(`
             INSERT INTO score_logs (user_id, delta, reason, related_annotation_id) VALUES (?, 0.1, 'vote_contribution', ?)

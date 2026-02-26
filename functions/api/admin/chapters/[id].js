@@ -53,28 +53,40 @@ export async function onRequestPut(context) {
       return Response.json({ error: `Content too long (max ${MAX_CONTENT_LENGTH} chars)` }, { status: 400 });
     }
     const wordCount = content.trim().length;
-    // 先更新DB（可回滚），再写R2（不可回滚）
+    // 先写R2 → 成功后更新D1 version
     const newVersion = (chapter.version || 0) + 1;
+    try {
+      await env.R2.put(chapter.content_key, content.trim());
+    } catch (err) {
+      return Response.json({ error: 'Failed to update content' }, { status: 500 });
+    }
     try {
       await env.DB.prepare(
         "UPDATE chapters SET word_count = ?, version = ?, updated_at = datetime('now') WHERE id = ?"
       ).bind(wordCount, newVersion, params.id).run();
-      await env.R2.put(chapter.content_key, content.trim());
     } catch (err) {
-      // 如果R2失败，回滚DB的word_count和version
-      await env.DB.prepare(
-        "UPDATE chapters SET word_count = ?, version = ?, updated_at = ? WHERE id = ?"
-      ).bind(chapter.word_count, chapter.version || 0, chapter.updated_at, params.id).run().catch(() => {});
-      return Response.json({ error: 'Failed to update content' }, { status: 500 });
+      // DB失败，R2已写入新内容但version未更新，下次编辑会覆盖，无需回滚R2
+      return Response.json({ error: 'Failed to update metadata' }, { status: 500 });
     }
   }
 
   await env.DB.prepare("UPDATE books SET updated_at = datetime('now') WHERE id = ?")
     .bind(chapter.book_id).run();
 
+  // 检查是否有批注可能失效
+  let warning = null;
+  if (content) {
+    const annoCount = await env.DB.prepare(
+      "SELECT COUNT(*) as cnt FROM annotations WHERE chapter_id = ? AND status != 'removed'"
+    ).bind(params.id).first();
+    if (annoCount && annoCount.cnt > 0) {
+      warning = `该章节有 ${annoCount.cnt} 条批注，修改内容可能导致批注定位失效`;
+    }
+  }
+
   // 返回新version供前端下次编辑使用
   const newChapter = await env.DB.prepare('SELECT version FROM chapters WHERE id = ?').bind(params.id).first();
-  return Response.json({ success: true, version: newChapter?.version || 0 });
+  return Response.json({ success: true, version: newChapter?.version || 0, ...(warning ? { warning } : {}) });
 }
 
 export async function onRequestDelete(context) {

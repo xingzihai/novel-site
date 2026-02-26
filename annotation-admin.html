@@ -143,7 +143,7 @@
   <div class="anno-admin">
     <div class="anno-header">
       <h1>📝 批注管理</h1>
-      <a href="/admin.html">← 返回管理后台</a>
+      <div><a href="/admin.html">← 返回管理后台</a> <a href="#" onclick="doLogout();return false" style="font-size:12px;color:#e74c3c;margin-left:12px">退出登录</a></div>
     </div>
     
     <div class="stats-row" id="stats-row">
@@ -230,12 +230,7 @@
   </div>
 
   <script>
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
-    if (!token) {
-      alert('请先登录');
-      location.href = '/admin.html';
-    }
-
+    // 认证由HttpOnly Cookie自动携带，页面加载时检查登录状态
     let currentPage = 1;
     let totalPages = 1;
     let selectedIds = new Set();
@@ -244,7 +239,8 @@
     async function api(method, path, body) {
       const opts = {
         method,
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: {},
+        credentials: 'same-origin'
       };
       if (body) {
         opts.headers['Content-Type'] = 'application/json';
@@ -254,11 +250,19 @@
     }
 
     // 获取当前用户信息
+    async function doLogout() {
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+      location.href = '/admin.html';
+    }
+
     async function fetchMe() {
       const res = await api('GET', '/api/me');
       if (res.ok) {
         const data = await res.json();
         currentRole = data.role;
+      } else {
+        alert('请先登录');
+        location.href = '/admin.html';
       }
     }
 

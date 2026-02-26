@@ -2,7 +2,7 @@
 // POST /api/auth/logout — 登出
 // POST /api/auth/password — 修改密码
 // GET /api/auth/me — 验证当前session
-import { login, checkAdmin, changePassword, parseJsonBody, sha256Hash, hmacSign, getGitHubClientSecret } from './_utils.js';
+import { login, checkAdmin, changePassword, parseJsonBody, sha256Hash, hmacSign, getGitHubClientSecret, makeAuthCookie, clearAuthCookie } from './_utils.js';
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -28,23 +28,33 @@ export async function onRequestPost(context) {
       return Response.json({ error: msg }, { status });
     }
 
-    return Response.json({
+    return new Response(JSON.stringify({
       success: true,
       token: result.token,
       username: result.username,
       role: result.role,
       userId: result.userId,
       expiresAt: result.expiresAt
+    }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': makeAuthCookie(result.token)
+      }
     });
   }
 
   if (action === 'logout') {
     const auth = await checkAdmin(request, env);
-    if (!auth.ok) return Response.json({ success: true });
-    const token = request.headers.get('Authorization').slice(7);
-    const tokenHash = await sha256Hash(token);
-    await env.DB.prepare('DELETE FROM admin_sessions WHERE token = ?').bind(tokenHash).run();
-    return Response.json({ success: true });
+    if (auth.ok && auth._token) {
+      const tokenHash = await sha256Hash(auth._token);
+      await env.DB.prepare('DELETE FROM admin_sessions WHERE token = ?').bind(tokenHash).run();
+    }
+    return new Response(JSON.stringify({ success: true }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': clearAuthCookie()
+      }
+    });
   }
 
   if (action === 'password') {

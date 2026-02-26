@@ -140,12 +140,13 @@ export async function onRequestPost(context) {
   // 检查是否达到举报阈值
   const reportCount = await env.DB.prepare(`
     SELECT 
-      SUM(CASE WHEN reporter_id IS NOT NULL THEN 1 ELSE 0.5 END) as effective_count
+      SUM(CASE WHEN reporter_id IS NOT NULL THEN 1 ELSE 0.2 END) as effective_count,
+      SUM(CASE WHEN reporter_id IS NOT NULL THEN 1 ELSE 0 END) as registered_count
     FROM reports WHERE annotation_id = ? AND status = 'pending'
   `).bind(annotationId).first();
 
   const threshold = 10; // 默认阈值，后续可从 site_settings 读取
-  if (reportCount && reportCount.effective_count >= threshold) {
+  if (reportCount && reportCount.effective_count >= threshold && reportCount.registered_count >= 3) {
     // 达到阈值：标记批注为 reported，记录时间
     await env.DB.prepare(`
       UPDATE annotations SET status = 'reported', updated_at = datetime('now') WHERE id = ? AND status = 'normal'

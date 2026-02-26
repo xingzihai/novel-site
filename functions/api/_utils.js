@@ -168,21 +168,41 @@ async function ensureDefaultAdmin(env) {
   } catch {}
 }
 
+// Cookie 工具函数
+export function makeAuthCookie(token) {
+  return `auth_token=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800`;
+}
+
+export function clearAuthCookie() {
+  return 'auth_token=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0';
+}
+
+function getTokenFromRequest(request) {
+  // 优先从 cookie 读取
+  const cookieHeader = request.headers.get('Cookie') || '';
+  const match = cookieHeader.match(/(?:^|;\s*)auth_token=([^;]+)/);
+  if (match && match[1] && match[1].length >= 10) return match[1];
+  // fallback: Bearer header
+  const auth = request.headers.get('Authorization');
+  if (auth && auth.startsWith('Bearer ')) {
+    const token = auth.slice(7);
+    if (token && token.length >= 10) return token;
+  }
+  return null;
+}
+
 // ===== Session验证 =====
 
 export async function checkAdmin(request, env) {
   await ensureSchema(env);
 
-  const auth = request.headers.get('Authorization');
-  if (!auth || !auth.startsWith('Bearer ')) return { ok: false, reason: 'missing' };
+  const token = getTokenFromRequest(request);
+  if (!token) return { ok: false, reason: 'missing' };
 
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const ipHash = await sha256Hash(ip);
   const locked = await isIpLocked(env, ipHash);
   if (locked) return { ok: false, reason: 'locked' };
-
-  const token = auth.slice(7);
-  if (!token || token.length < 10) return { ok: false, reason: 'invalid' };
 
   // 对token做哈希后查找
   const tokenHash = await sha256Hash(token);
@@ -205,7 +225,7 @@ export async function checkAdmin(request, env) {
 
     // 兼容旧角色：editor → admin
   const role = session.role === 'editor' ? 'admin' : (session.role || 'demo');
-  return { ok: true, userId: session.user_id, username: session.username, role, passwordLocked: session.password_locked === 1 };
+  return { ok: true, userId: session.user_id, username: session.username, role, passwordLocked: session.password_locked === 1, _token: token };
 }
 
 // ===== 登录 =====
@@ -522,6 +542,12 @@ export async function ensureAnnotationSchema(env) {
         await env.DB.prepare(`ALTER TABLE admin_users ADD COLUMN ${col}`).run();
       } catch (_) { /* column already exists */ }
     }
+
+    // 补充缺失索引
+    try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_user ON admin_sessions(user_id)').run(); } catch (_) {}
+    try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_mutes_user ON mutes(user_id, ends_at)').run(); } catch (_) {}
+    try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_likes_user ON annotation_likes(user_id)').run(); } catch (_) {}
+    try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_votes_annotation ON votes(annotation_id, admin_id)').run(); } catch (_) {}
 
     _annoSchemaEnsured = true;
   } catch (e) {

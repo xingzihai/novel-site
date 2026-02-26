@@ -472,7 +472,7 @@
     }
 
     // ===== 认证 =====
-    let authToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
+    let authToken = ''; // token不再存localStorage，由cookie自动携带
     let currentRole = localStorage.getItem('auth_role') || sessionStorage.getItem('auth_role') || '';
     let currentUserId = Number(localStorage.getItem('auth_uid') || sessionStorage.getItem('auth_uid')) || 0;
     let currentPasswordLocked = false;
@@ -482,12 +482,13 @@
     function saveAuth(token, role, uid) {
       authToken = token; currentRole = role; currentUserId = uid;
       const store = rememberLogin ? localStorage : sessionStorage;
-      store.setItem('auth_token', token);
       store.setItem('auth_role', role);
       store.setItem('auth_uid', uid);
       // 清理另一个存储
       const other = rememberLogin ? sessionStorage : localStorage;
-      other.removeItem('auth_token'); other.removeItem('auth_role'); other.removeItem('auth_uid');
+      other.removeItem('auth_role'); other.removeItem('auth_uid');
+      // 清理旧的token存储
+      localStorage.removeItem('auth_token'); sessionStorage.removeItem('auth_token');
     }
     function clearAuth() {
       authToken = ''; currentRole = ''; currentUserId = 0;
@@ -518,17 +519,12 @@
     // 页面加载时检查 GitHub OAuth 回调 + 检查是否启用
     (function handleGitHubCallback() {
       const hash = location.hash;
-      if (hash.startsWith('#github_token=')) {
-        const token = hash.slice('#github_token='.length);
-        if (token) {
-          // GitHub OAuth 默认记住登录
-          rememberLogin = true;
-          localStorage.setItem('remember_login', 'true');
-          authToken = token;
-          saveAuth(token, '', 0);
-          history.replaceState(null, '', location.pathname);
-          checkSession();
-        }
+      if (hash.startsWith('#github_login=success')) {
+        // GitHub OAuth 成功，token已通过HttpOnly Cookie设置
+        rememberLogin = true;
+        localStorage.setItem('remember_login', 'true');
+        history.replaceState(null, '', location.pathname);
+        checkSession();
       } else if (hash.startsWith('#github_error=')) {
         const error = decodeURIComponent(hash.slice('#github_error='.length));
         history.replaceState(null, '', location.pathname);
@@ -550,25 +546,25 @@
       try {
         const res = await fetch('/api/auth?action=login', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({username, password})
+          body: JSON.stringify({username, password}),
+          credentials: 'same-origin'
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         localStorage.setItem('last_username', username);
-        saveAuth(data.token, data.role || 'demo', data.userId || 0);
+        saveAuth('', data.role || 'demo', data.userId || 0);
         showAdminPanel(data.username, currentRole);
       } catch(e) { showMsg('login-msg', e.message, 'error'); }
     }
 
     async function checkSession() {
-      if (!authToken) return false;
       try {
         const res = await fetch('/api/auth?action=me', {
-          headers:{'Authorization':'Bearer '+authToken}
+          credentials: 'same-origin'
         });
         if (!res.ok) { clearAuth(); return false; }
         const data = await res.json();
-        if (data.authenticated) { currentPasswordLocked = !!data.passwordLocked; saveAuth(authToken, data.role || 'demo', data.userId || 0); showAdminPanel(data.username, currentRole); return true; }
+        if (data.authenticated) { currentPasswordLocked = !!data.passwordLocked; saveAuth('', data.role || 'demo', data.userId || 0); showAdminPanel(data.username, currentRole); return true; }
       } catch {}
       clearAuth();
       return false;
@@ -594,7 +590,7 @@
     }
 
     async function doLogout() {
-      try { await fetch('/api/auth?action=logout',{method:'POST',headers:{'Authorization':'Bearer '+authToken}}); } catch{}
+      try { await fetch('/api/auth/logout',{method:'POST', credentials:'same-origin'}); } catch{}
       clearAuth();
       document.getElementById('login-panel').style.display = 'block';
       document.getElementById('admin-panel').style.display = 'none';
@@ -606,7 +602,7 @@
       if (!confirm('⚠️ 确定要注销账号吗？\n\n• 您创建的书籍和章节将转交给管理员保管\n• 此操作不可恢复！')) return;
       if (!confirm('再次确认：注销后无法恢复，确定继续？')) return;
       try {
-        const res = await fetch('/api/admin/account', { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + authToken, 'Content-Type': 'application/json' } });
+        const res = await fetch('/api/admin/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         alert('账号已注销。感谢使用！');
@@ -1192,6 +1188,7 @@
         try {
           const res=await api('PUT',`/api/admin/chapters/${id}`,body);
           const d=await res.json(); if(!res.ok) throw new Error(d.error);
+          if (d.warning) { alert('⚠️ ' + d.warning); }
           showMsg('manage-msg','编辑成功','success');
           loadChapters(); refreshAllBooks();
         } catch(e) { showMsg('manage-msg','编辑失败：'+e.message,'error'); }
@@ -1207,7 +1204,7 @@
 
     // ===== 工具 =====
     function api(method,url,body) {
-      const opts={method,headers:{'Authorization':`Bearer ${getToken()}`,'Content-Type':'application/json'}};
+      const opts={method,headers:{'Content-Type':'application/json'}, credentials:'same-origin'};
       if (body) opts.body=JSON.stringify(body);
       return fetch(url,opts);
     }
@@ -1494,7 +1491,7 @@
         formData.append('file', file);
         const res = await fetch('/api/admin/fonts', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${getToken()}` },
+          credentials: 'same-origin',
           body: formData
         });
         const data = await res.json();
@@ -2036,7 +2033,7 @@
           formData.append('file', compressed, 'cover.jpg');
           await fetch(`/api/admin/covers?book_id=${_editBookId}`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${getToken()}` },
+            credentials: 'same-origin',
             body: formData
           });
         }

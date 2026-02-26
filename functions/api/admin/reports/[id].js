@@ -11,7 +11,7 @@ function getMuteDuration(violationCount) {
 // 记录积分变动
 async function addScore(env, userId, delta, reason, annoId, reportId) {
   await env.DB.prepare(
-    'UPDATE admin_users SET score = MIN(100, MAX(-100, score + ?)) WHERE id = ?'
+    'UPDATE admin_users SET score = ROUND(MIN(100, MAX(-100, ROUND(score, 1) + ?)), 1) WHERE id = ?'
   ).bind(delta, userId).run();
   await env.DB.prepare(`
     INSERT INTO score_logs (user_id, delta, reason, related_annotation_id, related_report_id)
